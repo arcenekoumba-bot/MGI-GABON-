@@ -6,6 +6,21 @@
     <title>Ma Gestion Immo — Version Locale Améliorée</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <!-- Firebase (SDK compat : API identique à la version simulée précédente) -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAa_bkjP5ixMVkYbZcucrq1RRU8FwHWDkI",
+            authDomain: "mgi-gabon.firebaseapp.com",
+            projectId: "mgi-gabon",
+            storageBucket: "mgi-gabon.firebasestorage.app",
+            messagingSenderId: "892533690221",
+            appId: "1:892533690221:web:1f7d16a07b493d5fc4d464"
+        };
+        firebase.initializeApp(firebaseConfig);
+    </script>
     <style>
         :root {
             --primary: #1e3a8a; --accent: #3b82f6; --bg: #f8fafc;
@@ -487,47 +502,9 @@
         if(msgConn) { msgConn.style.display = 'none'; msgConn.textContent = ''; }
         if(msgIns) { msgIns.style.display = 'none'; msgIns.textContent = ''; }
     }
-    // Auth minimal dans le 1er bloc — identique au mock du 2e bloc
-    var auth = (function() {
-        var _cur = JSON.parse(localStorage.getItem('auth_user') || 'null');
-        var _cbs = [];
-        return {
-            get currentUser() { return JSON.parse(localStorage.getItem('auth_user') || 'null'); },
-            _callbacks: _cbs,
-            _notifyAll: function() { _cbs.forEach(function(cb){ cb(JSON.parse(localStorage.getItem('auth_user')||'null')); }); },
-            onAuthStateChanged: function(cb) { _cbs.push(cb); setTimeout(function(){ cb(JSON.parse(localStorage.getItem('auth_user')||'null')); }, 100); },
-            signInWithEmailAndPassword: function(email, pass) {
-                var users = JSON.parse(localStorage.getItem('db_auth_users') || '[]');
-                var user = users.find(function(u){ return u.email===email && u.pass===pass; });
-                if(user) {
-                    var u = { uid: user.id, email: user.email };
-                    localStorage.setItem('auth_user', JSON.stringify(u));
-                    auth._notifyAll();
-                    return Promise.resolve(u);
-                } else {
-                    return Promise.reject({ message: 'Email ou mot de passe incorrect.' });
-                }
-            },
-            createUserWithEmailAndPassword: function(email, pass) {
-                var users = JSON.parse(localStorage.getItem('db_auth_users') || '[]');
-                if(users.find(function(u){ return u.email===email; })) {
-                    return Promise.reject({ message: 'Cet email est déjà utilisé.' });
-                }
-                var newUser = { id: Date.now().toString(), email: email, pass: pass };
-                users.push(newUser);
-                localStorage.setItem('db_auth_users', JSON.stringify(users));
-                var u = { uid: newUser.id, email: newUser.email };
-                localStorage.setItem('auth_user', JSON.stringify(u));
-                auth._notifyAll();
-                return Promise.resolve(u);
-            },
-            signOut: function() {
-                localStorage.removeItem('auth_user');
-                auth._notifyAll();
-                return Promise.resolve();
-            }
-        };
-    })();
+    // Auth réelle Firebase (même API que l'ancien mock : signInWithEmailAndPassword,
+    // createUserWithEmailAndPassword, onAuthStateChanged, currentUser, signOut)
+    var auth = firebase.auth();
 
     function connexionEmail() {
         var email = document.getElementById('in-email-conn').value.trim();
@@ -568,8 +545,7 @@
         if(typeof window.seDeconnecter === 'function' && window.seDeconnecter !== seDeconnecter) {
             return window.seDeconnecter();
         }
-        localStorage.removeItem('auth_user');
-        location.reload();
+        auth.signOut().then(function(){ location.reload(); });
     }
     function afficherResetMdp() {
         var email = document.getElementById('in-email-conn').value.trim();
@@ -1353,123 +1329,91 @@
         function normaliserTexte(s) {
             return (s || '').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         }
-        const db = {
-            _getStore: (collection) => JSON.parse(localStorage.getItem('db_' + collection) || '[]'),
-            _saveStore: (collection, data) => localStorage.setItem('db_' + collection, JSON.stringify(data)),
-            _deleteWhere: (collection, predicateFn) => {
-                const store = db._getStore(collection);
-                const filtered = store.filter(x => !predicateFn(x));
-                db._saveStore(collection, filtered);
-                // Déclencher les listeners
-                if(db._listeners && db._listeners[collection]) {
-                    db._listeners[collection].forEach(cb => cb(filtered));
-                }
-            },
-            collection: (name) => ({
-                add: async (doc) => {
-                    const store = db._getStore(name);
-                    const newDoc = { id: Date.now().toString(), ...doc };
-                    store.push(newDoc);
-                    db._saveStore(name, store);
-                    db._trigger(name);
-                    return newDoc;
-                },
-                doc: (id) => ({
-                    get: async () => {
-                        const store = db._getStore(name);
-                        const data = store.find(d => d.id === id);
-                        return { exists: () => !!data, data: () => data };
-                    },
-                    set: async (data, options) => {
-                        const store = db._getStore(name);
-                        const idx = store.findIndex(d => d.id === id);
-                        if (idx > -1) {
-                            if (options && options.merge) {
-                                store[idx] = { ...store[idx], ...data };
-                            } else {
-                                store[idx] = { id, ...data };
-                            }
-                        } else {
-                            store.push({ id, ...data });
-                        }
-                        db._saveStore(name, store);
-                        db._trigger(name);
-                    },
-                    delete: async () => {
-                        let store = db._getStore(name);
-                        store = store.filter(d => d.id !== id);
-                        db._saveStore(name, store);
-                        db._trigger(name);
-                    }
-                }),
-                get: async () => {
-                    const store = db._getStore(name);
-                    return {
-                        forEach: (cb) => store.forEach(d => cb({ id: d.id, data: () => d })),
-                        empty: store.length === 0,
-                        docs: store.map(d => ({ id: d.id, data: () => d }))
-                    };
-                },
-                where: (field, op, value) => {
-                    let store = db._getStore(name);
-                    const filtered = store.filter(d => d[field] === value);
-                    return {
-                        get: async () => ({
-                            forEach: (cb) => filtered.forEach(d => cb({ id: d.id, data: () => d })),
-                            empty: filtered.length === 0,
-                            docs: filtered.map(d => ({ id: d.id, data: () => d }))
-                        }),
-                        onSnapshot: (cb) => {
-                            const wrapper = () => {
-                                const currentStore = db._getStore(name).filter(d => d[field] === value);
-                                cb({
-                                    forEach: (innerCb) => currentStore.forEach(d => innerCb({ id: d.id, data: () => d })),
-                                    empty: currentStore.length === 0,
-                                    docs: currentStore.map(d => ({ id: d.id, data: () => d }))
-                                });
-                            };
-                            db._subscribe(name, wrapper);
-                            wrapper();
-                        },
-                        where: (f2, o2, v2) => {
-                            const doubleFiltered = filtered.filter(d => d[f2] === v2);
-                            return {
-                                get: async () => ({
-                                    forEach: (cb) => doubleFiltered.forEach(d => cb({ id: d.id, data: () => d })),
-                                    empty: doubleFiltered.length === 0,
-                                    docs: doubleFiltered.map(d => ({ id: d.id, data: () => d }))
-                                })
-                            };
-                        }
-                    };
-                },
-                onSnapshot: (cb) => {
-                    const wrapper = () => {
-                        const currentStore = db._getStore(name);
-                        cb({
-                            forEach: (innerCb) => currentStore.forEach(d => innerCb({ id: d.id, data: () => d })),
-                            empty: currentStore.length === 0
-                        });
-                    };
-                    db._subscribe(name, wrapper);
-                    wrapper();
-                }
-            }),
-            _listeners: {},
-            _subscribe: (name, cb) => {
-                if (!db._listeners[name]) db._listeners[name] = [];
-                db._listeners[name].push(cb);
-            },
-            _trigger: (name) => {
-                if (db._listeners[name]) db._listeners[name].forEach(cb => cb());
+        // Base de données réelle Firestore.
+        // db.collection(...).add/doc/get/where/onSnapshot() sont NATIVEMENT identiques
+        // à l'ancienne simulation, donc tout le code existant fonctionne sans changement.
+        // On ajoute juste un cache local (_getStore/_saveStore) pour les endroits du code
+        // qui lisent/écrivent des collections entières de façon synchrone, comme avant.
+        const db = firebase.firestore();
+        db._cache = {};
+        db._cacheReady = {};
+        db._cacheListenersStarted = {};
+
+        db._ensureListening = function(collection) {
+            if (db._cacheListenersStarted[collection]) return;
+            db._cacheListenersStarted[collection] = true;
+            db._cache[collection] = db._cache[collection] || [];
+            db.collection(collection).onSnapshot(function(snapshot) {
+                const arr = [];
+                snapshot.forEach(function(doc) { arr.push(Object.assign({ id: doc.id }, doc.data())); });
+                db._cache[collection] = arr;
+                db._cacheReady[collection] = true;
+            }, function(err) {
+                console.error('Erreur de synchronisation Firestore (' + collection + ') :', err);
+            });
+        };
+
+        db._getStore = function(collection) {
+            db._ensureListening(collection);
+            return db._cache[collection] || [];
+        };
+
+        db._saveStore = function(collection, newArray) {
+            const oldArray = db._cache[collection] || [];
+            const oldIds = {};
+            oldArray.forEach(function(d) { oldIds[d.id] = true; });
+            const newIds = {};
+            newArray.forEach(function(d) { newIds[d.id] = true; });
+
+            const batch = db.batch();
+            oldArray.forEach(function(d) {
+                if (!newIds[d.id]) batch.delete(db.collection(collection).doc(String(d.id)));
+            });
+            newArray.forEach(function(d) {
+                const copy = Object.assign({}, d);
+                const id = copy.id;
+                delete copy.id;
+                batch.set(db.collection(collection).doc(String(id)), copy);
+            });
+            batch.commit().catch(function(err) {
+                console.error('Erreur d\'enregistrement Firestore (' + collection + ') :', err);
+            });
+            // Mise à jour immédiate du cache local pour garder un comportement synchrone
+            db._cache[collection] = newArray;
+        };
+
+        db._deleteWhere = function(collection, predicateFn) {
+            const store = db._getStore(collection);
+            const toDelete = store.filter(predicateFn);
+            const filtered = store.filter(function(x) { return !predicateFn(x); });
+            const batch = db.batch();
+            toDelete.forEach(function(d) { batch.delete(db.collection(collection).doc(String(d.id))); });
+            batch.commit().catch(function(err) {
+                console.error('Erreur de suppression Firestore (' + collection + ') :', err);
+            });
+            db._cache[collection] = filtered;
+            if (db._listeners && db._listeners[collection]) {
+                db._listeners[collection].forEach(function(cb) { cb(filtered); });
             }
         };
 
-        // auth défini dans le 1er bloc script (disponible immédiatement au chargement)
-        auth.signOut = async () => {
-            localStorage.removeItem('auth_user');
-            auth._notifyAll();
+        db._listeners = {};
+        db._subscribe = function(name, cb) {
+            if (!db._listeners[name]) db._listeners[name] = [];
+            db._listeners[name].push(cb);
         };
+        db._trigger = function(name) {
+            if (db._listeners[name]) db._listeners[name].forEach(function(cb) { cb(); });
+        };
+
+        // Pré-chargement des collections utilisées en lecture synchrone,
+        // pour limiter le délai avant que les données réelles arrivent à l'écran.
+        ['contrats', 'paiements', 'messages', 'incidents', 'immeubles', 'contratsEnAttente'].forEach(function(c) {
+            db._ensureListening(c);
+        });
+
+        // auth défini dans le 1er bloc script (disponible immédiatement au chargement)
+        // signOut() est géré nativement par Firebase Auth, plus besoin de le redéfinir.
 
         let globalSavedImages = [];
         let roleActuel = "";
