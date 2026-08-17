@@ -1498,7 +1498,7 @@
             } else {
                 utilisateurEmail = user.email;
                 const profilDoc = await db.collection("users").doc(user.uid).get();
-                if (profilDoc.exists()) {
+                if (profilDoc.exists) {
                     const data = profilDoc.data();
                     document.getElementById('login-shell').style.display = 'none';
                     document.getElementById('app-shell').classList.add('active');
