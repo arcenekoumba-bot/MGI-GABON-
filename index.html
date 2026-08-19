@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ma Gestion Immo — Version Locale Améliorée</title>
+    <!-- PWA : permet l'installation de l'app sur téléphone -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e3a8a">
+    <link rel="icon" type="image/png" href="favicon-64.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MGI Gabon">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <!-- Firebase (SDK compat : API identique à la version simulée précédente) -->
@@ -3812,6 +3820,16 @@
             btn.style.display=show?"flex":"none";
         };
     })();
+    </script>
+    <script>
+        // Enregistrement du service worker (PWA)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('sw.js').catch(function(err) {
+                    console.error('Erreur d\'enregistrement du service worker :', err);
+                });
+            });
+        }
     </script>
 </body>
 </html>
