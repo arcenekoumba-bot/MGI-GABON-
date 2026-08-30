@@ -518,19 +518,26 @@
         var email = document.getElementById('in-email-conn').value.trim();
         var pass = document.getElementById('in-pass-conn').value;
         var el = document.getElementById('auth-message');
-        var dbg = document.getElementById('debug-connexion');
+        var btn = document.querySelector('#form-connexion .btn-main');
+        var texteBtn = btn ? btn.textContent : '';
         function showErr(msg) { if(el){ el.style.display='block'; el.style.background='#fee2e2'; el.style.color='#991b1b'; el.textContent=msg; } }
-        function showDbg(msg) { if(dbg){ dbg.style.display='block'; dbg.textContent=msg; } }
         if(el) el.style.display='none';
         if(!email || !pass) return showErr('Veuillez remplir tous les champs.');
-        showDbg('⏳ Étape 1/2 : connexion à Firebase...');
-        auth.signInWithEmailAndPassword(email, pass).then(function(){
-            showDbg('✅ Étape 1/2 réussie. ⏳ Étape 2/2 : chargement de votre profil...');
-        }).catch(function(err){
-            showDbg('');
-            if(dbg) dbg.style.display='none';
-            showErr(err.message || 'Erreur de connexion.');
-        });
+        if(btn) { btn.disabled = true; btn.textContent = 'Connexion en cours...'; btn.style.opacity = '0.7'; }
+        auth.signInWithEmailAndPassword(email, pass)
+            .catch(function(err){
+                var messages = {
+                    'auth/invalid-credential': 'Email ou mot de passe incorrect.',
+                    'auth/invalid-email': 'Adresse e-mail invalide.',
+                    'auth/user-disabled': 'Ce compte a été désactivé.',
+                    'auth/too-many-requests': 'Trop de tentatives. Réessayez dans quelques minutes.',
+                    'auth/network-request-failed': 'Connexion Internet indisponible. Vérifiez votre réseau puis réessayez.'
+                };
+                showErr(messages[err.code] || err.message || 'Erreur de connexion.');
+            })
+            .finally(function(){
+                if(btn) { btn.disabled = false; btn.textContent = texteBtn || 'Se connecter'; btn.style.opacity = ''; }
+            });
     }
     function inscriptionEmail() {
         var email = document.getElementById('in-email-ins').value.trim();
@@ -621,7 +628,6 @@
             <!-- Formulaire Connexion -->
             <div id="form-connexion" class="auth-form active">
                 <div id="auth-message"></div>
-                <div id="debug-connexion" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:10px;"></div>
                 <label>Adresse E-mail</label>
                 <input type="text" id="in-email-conn" placeholder="votre@email.com">
                 <label>Mot de passe</label>
@@ -1360,14 +1366,10 @@
         // On ajoute juste un cache local (_getStore/_saveStore) pour les endroits du code
         // qui lisent/écrivent des collections entières de façon synchrone, comme avant.
         const db = firebase.firestore();
-        // Certains réseaux mobiles (notamment avec une connexion faible/instable)
-        // bloquent ou coupent le type de connexion "streaming" que Firestore
-        // utilise par défaut, alors que l'authentification (requêtes HTTPS
-        // classiques) passe sans problème. On force ici un mode de connexion
-        // par "long polling" (requêtes HTTPS classiques répétées), beaucoup
-        // plus tolérant aux réseaux difficiles, quitte à être très légèrement
-        // plus lent.
-        db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+        // Doit être initialisé avant le pré-chargement des écouteurs Firestore.
+        // Sinon _ensureListening() lit une variable let encore dans sa zone morte
+        // temporelle et interrompt l'exécution du script avant onAuthStateChanged.
+        let utilisateurEmail = "";
         db._cache = {};
         db._cacheReady = {};
         db._cacheListenersStarted = {};
@@ -1479,7 +1481,6 @@
         let utilisateurNom = "";
         let paymentStatusChart = null;
         let roleSelectionne = "";
-        let utilisateurEmail = "";
 
         // UI HELPERS
         function afficherMessage(elId, texte, type = 'error') {
@@ -1551,39 +1552,25 @@
 
         // DASHBOARD LOGIC
         auth.onAuthStateChanged(async (user) => {
-            const dbg = document.getElementById('debug-connexion');
-            function showDbg(msg) { if(dbg){ dbg.style.display='block'; dbg.textContent=msg; } }
             if (!user) {
                 document.getElementById('login-shell').style.display = 'block';
                 document.getElementById('app-shell').classList.remove('active');
             } else {
                 utilisateurEmail = user.email;
                 try {
-                    showDbg('⏳ Étape 2/2 : lecture de votre profil (utilisateur ' + user.uid.slice(0,6) + '...)...');
-                    const delaiDepasse = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT_8S")), 8000));
-                    const profilDoc = await Promise.race([
-                        db.collection("users").doc(user.uid).get(),
-                        delaiDepasse
-                    ]);
-                    showDbg('✅ Profil lu. Ouverture de votre espace...');
+                    const profilDoc = await db.collection("users").doc(user.uid).get();
                     if (profilDoc.exists) {
                         const data = profilDoc.data();
                         document.getElementById('login-shell').style.display = 'none';
                         document.getElementById('app-shell').classList.add('active');
                         lancerDashboard(data.role, data.nom, data.biens || 0, user.email);
-                        if(dbg) dbg.style.display = 'none';
                     } else {
-                        showDbg('⚠️ Aucun profil trouvé pour ce compte (document "users" absent).');
                         document.getElementById('login-shell').style.display = 'none';
                         document.getElementById('modal-profil').classList.add('show');
                     }
                 } catch(err) {
                     console.error('Erreur après connexion :', err);
-                    var msgDetail = (err && err.message === 'TIMEOUT_8S')
-                        ? "Le serveur n'a pas répondu après 8 secondes. Code technique : " + (err && err.code ? err.code : 'aucun code (vraie coupure réseau ou blocage silencieux)')
-                        : (err && err.message ? err.message : String(err)) + (err && err.code ? ' (code: ' + err.code + ')' : '');
-                    showDbg('❌ Échec à l\'étape 2/2 : ' + msgDetail);
-                    alert("Une erreur est survenue après la connexion : " + msgDetail + "\n\nMerci de faire une capture d'écran de ce message.");
+                    alert("Une erreur est survenue après la connexion : " + (err && err.message ? err.message : err) + "\n\nMerci de faire une capture d'écran de ce message.");
                 }
             }
         });
