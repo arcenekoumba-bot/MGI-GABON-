@@ -612,16 +612,6 @@
         }
         auth.signOut().then(function(){ location.reload(); });
     }
-    function afficherResetMdp() {
-        var email = document.getElementById('in-email-conn').value.trim();
-        if(!email) {
-            var el = document.getElementById('auth-message');
-            if(el) { el.style.display='block'; el.style.background='#fee2e2'; el.style.color='#991b1b'; el.textContent="Entrez votre email d\'abord."; }
-            return;
-        }
-        var el = document.getElementById('auth-message');
-        if(el) { el.style.display='block'; el.style.background='#dcfce7'; el.style.color='#166534'; el.textContent='Email de réinitialisation simulé envoyé.'; }
-    }
     function toggleFieldsBail() {}
     function ouvrirConvLocataire() {
         var sel = document.getElementById('bai-dest-select');
@@ -675,7 +665,7 @@
                 <input type="password" id="in-pass-conn" placeholder="••••••••">
                 <button class="btn-main" onclick="connexionEmail()">Se connecter</button>
                 <p style="text-align:center; font-size: 13px; margin-top: 15px;">
-                    <a href="#" onclick="afficherResetMdp()" style="color: var(--accent); text-decoration: none;">Mot de passe oublié ?</a>
+                    <a href="javascript:void(0)" onclick="afficherResetMdp(); return false;" style="color: var(--accent); text-decoration: none;">Mot de passe oublié ?</a>
                 </p>
             </div>
 
@@ -3252,15 +3242,37 @@
         window.afficherResetMdp = function() {
             const email = document.getElementById('in-email-conn').value.trim();
             if(!email) return afficherMessage('auth-message', 'Entrez votre email d\'abord.');
-            auth.sendPasswordResetEmail(email)
-                .then(function(){ afficherMessage('auth-message', 'Un lien de réinitialisation a été envoyé à cette adresse.', 'success'); })
+            const lienRetour = 'https://arcenekoumba-bot.github.io/MGI-GABON-/';
+            const actionCodeSettings = {
+                url: lienRetour,
+                handleCodeInApp: false
+            };
+            const lien = document.querySelector('#form-connexion a[onclick*="afficherResetMdp"]');
+            if(lien) {
+                lien.style.pointerEvents = 'none';
+                lien.style.opacity = '0.6';
+                lien.textContent = 'Envoi du lien...';
+            }
+            auth.sendPasswordResetEmail(email, actionCodeSettings)
+                .then(function(){
+                    afficherMessage('auth-message', 'Un lien de réinitialisation a été envoyé. Consultez votre boîte e-mail et vos courriers indésirables.', 'success');
+                })
                 .catch(function(err){
                     const messages = {
                         'auth/invalid-email': 'Adresse e-mail invalide.',
-                        'auth/user-not-found': 'Aucun compte ne correspond à cette adresse.',
-                        'auth/network-request-failed': 'Connexion Internet indisponible.'
+                        'auth/network-request-failed': 'Connexion Internet indisponible. Vérifiez votre réseau puis réessayez.',
+                        'auth/too-many-requests': 'Trop de demandes. Attendez quelques minutes avant de réessayer.',
+                        'auth/unauthorized-continue-uri': 'Le domaine de retour n’est pas encore autorisé dans Firebase Authentication.',
+                        'auth/invalid-continue-uri': 'L’adresse de retour Firebase est invalide.'
                     };
                     afficherMessage('auth-message', messages[err.code] || 'Impossible d\'envoyer le lien pour le moment.');
+                })
+                .finally(function(){
+                    if(lien) {
+                        lien.style.pointerEvents = '';
+                        lien.style.opacity = '';
+                        lien.textContent = 'Mot de passe oublié ?';
+                    }
                 });
         };
 
