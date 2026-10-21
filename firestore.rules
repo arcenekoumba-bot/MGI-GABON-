@@ -1,0 +1,124 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myEmail() {
+      return request.auth.token.email;
+    }
+
+    function isEmail(value) {
+      return signedIn() && value == myEmail();
+    }
+
+    function canReadPair(data) {
+      return signedIn() && (
+        data.bailleurEmail == myEmail() ||
+        data.locataireEmail == myEmail() ||
+        data.email == myEmail() ||
+        data.auteurEmail == myEmail()
+      );
+    }
+
+    match /users/{userId} {
+      allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /messages/{messageId} {
+      allow read: if canReadPair(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.auteurEmail == myEmail()
+        && (request.resource.data.bailleurEmail == myEmail()
+          || request.resource.data.locataireEmail == myEmail());
+      allow update, delete: if signedIn() && resource.data.auteurEmail == myEmail();
+    }
+
+    match /contrats/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      allow update: if canReadPair(resource.data);
+      allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
+    }
+
+    match /contratsEnAttente/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      allow update: if canReadPair(resource.data);
+      allow delete: if canReadPair(resource.data);
+    }
+
+    match /paiements/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create, update: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
+    }
+
+    match /quittances/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create, update: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
+    }
+
+    match /incidents/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create: if signedIn() && (
+        request.resource.data.locataireEmail == myEmail() ||
+        request.resource.data.bailleurEmail == myEmail()
+      );
+      allow update, delete: if canReadPair(resource.data);
+    }
+
+    match /documentsLocataire/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create, update: if signedIn() && (
+        request.resource.data.locataireEmail == myEmail() ||
+        request.resource.data.bailleurEmail == myEmail()
+      );
+      allow delete: if canReadPair(resource.data);
+    }
+
+    match /documentsRecusBailleur/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create: if signedIn() && request.resource.data.locataireEmail == myEmail();
+      allow update, delete: if signedIn() && resource.data.bailleurEmail == myEmail();
+    }
+
+    match /documentsPersonnels/{documentId} {
+      // Nouveau format : chaque document appartient à l'e-mail authentifié.
+      // Les deux anciens champs restent lisibles temporairement pour ne pas
+      // perdre les documents créés par une version précédente de MGI.
+      function isPersonalDocumentOwner(data) {
+        return data.proprietaireEmail == myEmail()
+          || data.email == myEmail()
+          || data.userEmail == myEmail();
+      }
+      allow read, delete: if signedIn() && isPersonalDocumentOwner(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.proprietaireEmail == myEmail();
+      allow update: if signedIn()
+        && isPersonalDocumentOwner(resource.data)
+        && request.resource.data.proprietaireEmail == myEmail();
+    }
+
+    match /signaturesLocataire/{documentId} {
+      allow read: if canReadPair(resource.data);
+      allow create, update: if signedIn() && (
+        request.resource.data.locataireEmail == myEmail() ||
+        request.resource.data.bailleurEmail == myEmail()
+      );
+      allow delete: if canReadPair(resource.data);
+    }
+
+    match /immeubles/{documentId} {
+      allow read, delete: if signedIn() && resource.data.bailleurEmail == myEmail();
+      allow create: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      allow update: if signedIn() && resource.data.bailleurEmail == myEmail()
+        && request.resource.data.bailleurEmail == myEmail();
+    }
+
+    // Toute collection non déclarée ci-dessus est refusée par défaut.
+  }
+}

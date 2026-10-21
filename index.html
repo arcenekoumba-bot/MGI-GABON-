@@ -2016,6 +2016,23 @@
             if(ctx && c) ctx.clearRect(0,0,c.width,c.height);
         };
 
+        // Ajoute le logo officiel visible dans l'interface aux documents PDF.
+        // Un texte de secours reste prévu si l'image n'est pas encore chargée.
+        function ajouterLogoMGI(doc, x, y, largeur, hauteur) {
+            const logo = document.getElementById('login-logo') || document.getElementById('sidebar-logo');
+            if(logo && logo.complete && logo.naturalWidth) {
+                try {
+                    doc.addImage(logo, 'PNG', x, y, largeur, hauteur);
+                    return;
+                } catch(err) {
+                    console.warn('Logo MGI non intégré au PDF :', err);
+                }
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('MGI', x + largeur / 2, y + hauteur / 2 + 2, { align: 'center' });
+        }
+
         // Régénère le PDF du contrat en incluant les DEUX signatures (bailleur + locataire)
         // côte à côte, une fois que le locataire a validé la sienne.
         function genererPDFContratFinal(c, sigLocataireDataUrl, dateValidation) {
@@ -2027,6 +2044,7 @@
 
             doc.setFillColor(30, 58, 138);
             doc.rect(0, 0, pageW, 40, 'F');
+            ajouterLogoMGI(doc, 20, 5, 42, 11);
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
             doc.setFont('helvetica', 'bold');
@@ -2141,7 +2159,7 @@
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(8);
             doc.setFont('helvetica', 'normal');
-            doc.text('Ma Gestion Immo — Solutions Immobilières Modernes', pageW / 2, 291, { align: 'center' });
+            doc.text('Document généré avec MGI — Ma Gestion Immo', pageW / 2, 291, { align: 'center' });
 
             // On retourne l'objet PDF lui-même (pas le texte encodé en base64) :
             // le PDF complet est trop volumineux pour être stocké dans un document
@@ -2366,6 +2384,7 @@
             // En-tête bleu
             doc.setFillColor(30, 58, 138);
             doc.rect(0, 0, pageW, 40, 'F');
+            ajouterLogoMGI(doc, 20, 5, 42, 11);
             
             // Logo texte dans l'entête
             doc.setTextColor(255, 255, 255);
@@ -2478,7 +2497,7 @@
             doc.rect(0, 282, pageW, 15, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(8);
-            doc.text('Ma Gestion Immo — Solutions Immobilières Modernes', pageW / 2, 291, { align: 'center' });
+            doc.text('Document généré avec MGI — Ma Gestion Immo', pageW / 2, 291, { align: 'center' });
             
             const pdfBlobQ = doc.output('datauristring');
             doc.save(`Quittance_${nom}_${mois || dateEmission}.pdf`);
@@ -2538,6 +2557,7 @@
             // En-tête bleu
             doc.setFillColor(30, 58, 138);
             doc.rect(0, 0, pageW, 40, 'F');
+            ajouterLogoMGI(doc, 20, 5, 42, 11);
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
             doc.setFont('helvetica', 'bold');
@@ -2651,7 +2671,7 @@
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(8);
             doc.setFont('helvetica', 'normal');
-            doc.text('Ma Gestion Immo — Solutions Immobilières Modernes', pageW / 2, 291, { align: 'center' });
+            doc.text('Document généré avec MGI — Ma Gestion Immo', pageW / 2, 291, { align: 'center' });
             
             const dateEmission = new Date().toLocaleDateString('fr-FR');
             const locEmail = (document.getElementById('c-loc-email') ? document.getElementById('c-loc-email').value.trim() : '');
@@ -2812,13 +2832,12 @@
 
         function ecouterMessagesLocataire(nom) {
             if(_messagesLocataireUnsubscribe) _messagesLocataireUnsubscribe();
-            // Écouter l'e-mail (nouveaux messages) et le nom (anciens messages).
-            // Les deux résultats sont fusionnés pour éviter les doublons.
+            // L'e-mail est l'identifiant fiable du locataire. Une recherche par
+            // nom pourrait mélanger les conversations de personnes homonymes.
             const parId = {};
             let termineEmail = false;
-            let termineNom = false;
             const rendre = () => {
-                if(!termineEmail && !termineNom) return;
+                if(!termineEmail) return;
                 const msgs = Object.values(parId);
                 const cible = window._contactBailleurActif || {};
                 const filtres = cible.email ? msgs.filter(m => messageDansConversation(m, cible.email, utilisateurEmail, nom)) : msgs;
@@ -2829,12 +2848,7 @@
                 termineEmail = true;
                 rendre();
             }, err => { console.error('Erreur écoute messages par e-mail :', err); termineEmail = true; rendre(); });
-            const unsubNom = db.collection("messages").where("locataireNom", "==", nom).onSnapshot((snap) => {
-                snap.forEach(doc => parId[doc.id] = { _docId: doc.id, ...doc.data() });
-                termineNom = true;
-                rendre();
-            }, err => { console.error('Erreur écoute messages par nom :', err); termineNom = true; rendre(); });
-            _messagesLocataireUnsubscribe = () => { unsubEmail(); unsubNom(); };
+            _messagesLocataireUnsubscribe = () => { unsubEmail(); };
         }
 
         function afficherThread(msgs, id) {
@@ -3065,7 +3079,17 @@
                 list.innerHTML = "";
                 snap.forEach(doc => {
                     const d = doc.data();
-                    list.innerHTML += `<div class="card">${d.nom} <button onclick="supprimerDocPerso('${doc.id}')">Suppr.</button></div>`;
+                    const nomDocument = String(d.nom || 'Document personnel').replace(/[&<>'"]/g, c => ({
+                        '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
+                    }[c]));
+                    const nomProprietaire = String(d.proprietaireNom || utilisateurNom || 'Utilisateur').replace(/[&<>'"]/g, c => ({
+                        '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
+                    }[c]));
+                    list.innerHTML += `<div class="card">
+                        <div style="font-weight:600; color:var(--primary);">📄 ${nomDocument}</div>
+                        <div style="font-size:12px; color:#64748b; margin-top:4px;">Propriétaire : ${nomProprietaire}</div>
+                        <button onclick="supprimerDocPerso('${doc.id}')" style="margin-top:8px;">Suppr.</button>
+                    </div>`;
                 });
             });
         }
@@ -3074,7 +3098,11 @@
             const file = document.getElementById('loc-upload-perso').files[0];
             if(!file) return;
             await db.collection("documentsPersonnels").add({
-                nom: file.name, proprietaireEmail: utilisateurEmail, date: new Date().toLocaleDateString()
+                nom: file.name,
+                proprietaireNom: utilisateurNom,
+                proprietaireEmail: utilisateurEmail,
+                date: new Date().toLocaleDateString('fr-FR'),
+                dateISO: new Date().toISOString()
             });
             alert("Document ajouté !");
         };
