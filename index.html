@@ -49,6 +49,13 @@
             console.warn('Firebase App Check temporairement désactivé pour diagnostic.');
         }
     </script>
+    <!-- Stockage privé Supabase : aucune clé secrète dans le frontend. -->
+    <script>
+        window.MGI_SUPABASE_CONFIG = {
+            functionUrl: 'https://mobcbfravbsxiendpegz.supabase.co/functions/v1/mgi-storage'
+        };
+    </script>
+    <script src="supabase-storage-client.js"></script>
     <style>
         :root {
             --primary: #1e3a8a; --accent: #3b82f6; --bg: #f8fafc;
@@ -700,6 +707,7 @@
                     <button class="sidebar-link" onclick="showTab('box-bail', this)">📜 Contrat de Bail <span id="badge-contrats-attente" style="display:none;background:#f59e0b;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:6px;">0</span></button>
                     <button class="sidebar-link" onclick="showTab('box-incident-admin', this)">🛠 Gestion Incidents</button>
                     <button class="sidebar-link" onclick="showTab('box-bibliotheque', this)">📚 Bibliothèque Globale</button>
+                    <button class="sidebar-link" onclick="showTab('box-bai-documents-personnels', this)">🔒 Mon Coffre-fort</button>
                     <button class="sidebar-link" onclick="showTab('box-contacts', this)">👥 Contacts <span id="badge-unread-bai" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:6px;">0</span></button>
                     <button class="sidebar-link" onclick="showTab('box-messagerie', this)">💬 Messagerie</button>
                     <button class="sidebar-link" onclick="showTab('admin-purge-container', this)">⚙️ Maintenance</button>
@@ -1044,6 +1052,20 @@
                     </div>
                 </div>
 
+                <!-- Coffre-fort personnel bailleur -->
+                <div id="box-bai-documents-personnels" class="dashboard-content">
+                    <div class="card">
+                        <h3 class="sub-section-title">🔒 Mon Coffre-fort Personnel</h3>
+                        <p style="font-size:14px;color:#64748b;">Ces documents privés ne sont pas partagés automatiquement avec les locataires.</p>
+                        <div class="form-grid" style="margin-bottom:20px;background:#f8fafc;padding:15px;border-radius:10px;">
+                            <div class="full-width"><label>Ajouter un document</label>
+                                <input type="file" id="bai-upload-perso" accept=".pdf,image/*">
+                                <button class="btn-main btn-success" style="margin-top:10px;" onclick="uploadeDocumentBailleur()">Uploader le document</button>
+                            </div>
+                        </div>
+                        <div id="bai-perso-list"><p style="color:#94a3b8;">Aucun document personnel.</p></div>
+                    </div>
+                </div>
                 <!-- Section Messagerie (Bailleur & Locataire) -->
                 <!-- Section Contacts (Bailleur + Locataire) -->
                 <div id="box-contacts" class="dashboard-content">
@@ -1658,7 +1680,7 @@
             document.getElementById('admin-paiement').style.display = 'none';
             document.getElementById('filter-container').style.display = 'none';
             // Cacher les sections reservees au bailleur
-            var bailSections = ['box-quittance','box-bail','box-incident-admin','box-bibliotheque','admin-purge-container','box-contacts','box-analytique','box-multilogement'];
+            var bailSections = ['box-quittance','box-bail','box-incident-admin','box-bibliotheque','box-bai-documents-personnels','admin-purge-container','box-contacts','box-analytique','box-multilogement'];
             bailSections.forEach(function(id) {
                 var el = document.getElementById(id);
                 if(el) el.style.display = 'none';
@@ -1697,6 +1719,7 @@
                 if(parcSante) parcSante.style.display = 'block';
                 ecouterBibliothequeGlobaleBailleur();
                 ecouterDocsRecusBailleur();
+                ecouterDocumentsPersonnelsBailleur();
                 setTimeout(afficherContacts, 500);
                 marquerEnLigne();
                 ecouterMessagesBailleur();
@@ -2229,6 +2252,7 @@
                     signatureBailleur: contratData.signatureBailleur,
                     signatureLocataire: sigLocataire,
                     dateSignature: dateValidation,
+                    contratAttenteId: docId,
                     statut: 'valide'
                 });
 
@@ -2284,19 +2308,47 @@
             const fileInput = document.getElementById('loc-doc-bailleur-file');
             const file = fileInput ? fileInput.files[0] : null;
             const conf = document.getElementById('loc-doc-envoi-confirm');
-            // Même sans fichier physique (stockage local), on enregistre la notification
+            const currentUser = firebase.auth().currentUser;
+            if(!file) return alert('Sélectionnez un document avant de l’envoyer.');
+            if(!currentUser) return alert('Votre session a expiré. Reconnectez-vous.');
+            if(!window.MGIStorage) return alert('Le stockage sécurisé n’est pas encore disponible.');
+            const contratsAttente = db._getStore('contratsEnAttente');
+            const contratsValides = db._getStore('contrats');
+            const contrat = [...contratsValides, ...contratsAttente].find(c =>
+                normaliserTexte(c.locataireEmail || '') === normaliserTexte(utilisateurEmail)
+            );
+            const bailleurEmailLoc = contrat ? (contrat.bailleurEmail || '') : '';
+            if(!bailleurEmailLoc) return alert('Aucun bailleur n’est encore associé à votre compte.');
             const date = new Date().toLocaleDateString('fr-FR');
-            const contrats = db._getStore('contrats');
-            const bailleurEmailLoc = contrats.length > 0 ? (contrats[0].bailleurEmail || '') : '';
-            await db.collection("documentsRecusBailleur").add({
-                locataireNom: utilisateurNom, locataireEmail: utilisateurEmail,
-                bailleurEmail: bailleurEmailLoc,
-                typeDoc: type, nomFichier: file ? file.name : '(sans fichier)',
-                dateEnvoi: date, statut: 'Reçu', timestamp: new Date().toISOString()
-            });
-            if(conf) { conf.style.display='block'; conf.innerText='✅ ' + type + ' envoyé au bailleur le ' + date; }
-            if(fileInput) fileInput.value = '';
-            setTimeout(() => { if(conf) conf.style.display='none'; }, 4000);
+            const docRef = db.collection('documentsRecusBailleur').doc();
+            let uploadResult = null;
+            try {
+                uploadResult = await MGIStorage.upload({
+                    uid: currentUser.uid,
+                    category: 'personnels',
+                    documentId: docRef.id,
+                    file
+                });
+                await docRef.set({
+                    locataireNom: utilisateurNom, locataireEmail: utilisateurEmail,
+                    locataireUid: currentUser.uid, bailleurEmail: bailleurEmailLoc,
+                    typeDoc: type, nomFichier: file.name,
+                    fournisseurStockage: 'supabase', bucket: 'mgi-documents',
+                    cheminObjet: uploadResult.path, mimeType: uploadResult.mimeType,
+                    tailleOctets: uploadResult.size, dateEnvoi: date,
+                    statut: 'Reçu', timestamp: new Date().toISOString(),
+                    creeLe: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                if(conf) { conf.style.display='block'; conf.innerText='✅ ' + type + ' envoyé au bailleur le ' + date; }
+                if(fileInput) fileInput.value = '';
+                setTimeout(() => { if(conf) conf.style.display='none'; }, 4000);
+            } catch(error) {
+                console.error('Erreur envoi document au bailleur :', error);
+                if(uploadResult && uploadResult.path) {
+                    try { await MGIStorage.remove(uploadResult.path); } catch(cleanupError) { console.error(cleanupError); }
+                }
+                alert(error.message || 'Le document n’a pas pu être envoyé.');
+            }
         };
 
         // ---- Paiement Mobile Money (Airtel / Moov) côté locataire ----
@@ -2685,7 +2737,8 @@
 
             // ── FLUX 2 ÉTAPES ──
             const contratId = 'contrat_' + Date.now();
-            await db.collection("contratsEnAttente").add({
+            const contratAttenteRef = db.collection("contratsEnAttente").doc();
+            await contratAttenteRef.set({
                 id: contratId,
                 locataire: loc, locataireEmail: locEmail,
                 bailleur: bailleur || utilisateurNom, bailleurEmail: utilisateurEmail,
@@ -3085,29 +3138,139 @@
                     const nomProprietaire = String(d.proprietaireNom || utilisateurNom || 'Utilisateur').replace(/[&<>'"]/g, c => ({
                         '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
                     }[c]));
+                    const downloadBtn = d.fournisseurStockage === 'supabase' && d.cheminObjet
+                        ? `<button onclick="telechargerDocumentSupabase('${doc.id}')" style="margin-top:8px;margin-right:6px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer;">⬇️ Télécharger</button>`
+                        : '';
                     list.innerHTML += `<div class="card">
                         <div style="font-weight:600; color:var(--primary);">📄 ${nomDocument}</div>
                         <div style="font-size:12px; color:#64748b; margin-top:4px;">Propriétaire : ${nomProprietaire}</div>
-                        <button onclick="supprimerDocPerso('${doc.id}')" style="margin-top:8px;">Suppr.</button>
+                        ${downloadBtn}<button onclick="supprimerDocPerso('${doc.id}')" style="margin-top:8px;">Suppr.</button>
                     </div>`;
                 });
             });
         }
 
-        window.uploadeDocumentPersonnel = async () => {
-            const file = document.getElementById('loc-upload-perso').files[0];
-            if(!file) return;
-            await db.collection("documentsPersonnels").add({
-                nom: file.name,
-                proprietaireNom: utilisateurNom,
-                proprietaireEmail: utilisateurEmail,
-                date: new Date().toLocaleDateString('fr-FR'),
-                dateISO: new Date().toISOString()
+        function ecouterDocumentsPersonnelsBailleur() {
+            db.collection('documentsPersonnels').where('proprietaireEmail', '==', utilisateurEmail).onSnapshot(snap => {
+                const list = document.getElementById('bai-perso-list');
+                if(!list) return;
+                if(snap.empty) { list.innerHTML = '<p style="color:#94a3b8;">Aucun document personnel.</p>'; return; }
+                let html = '';
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    const nom = String(d.nom || 'Document personnel').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+                    const dl = d.fournisseurStockage === 'supabase' && d.cheminObjet
+                        ? `<button onclick="telechargerDocumentSupabase('${doc.id}')" style="margin-right:6px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer;">⬇️ Télécharger</button>` : '';
+                    html += `<div class="card"><div style="font-weight:600;color:var(--primary);">📄 ${nom}</div><div style="font-size:12px;color:#64748b;margin-top:4px;">Document privé · ${d.date || '—'}</div>${dl}<button onclick="supprimerDocPerso('${doc.id}')" style="margin-top:8px;">Suppr.</button></div>`;
+                });
+                list.innerHTML = html;
             });
-            alert("Document ajouté !");
+        }
+
+        window.uploadeDocumentBailleur = async function() {
+            const input = document.getElementById('bai-upload-perso');
+            const file = input && input.files ? input.files[0] : null;
+            const currentUser = firebase.auth().currentUser;
+            if(!file) return alert('Sélectionnez un fichier.');
+            if(!currentUser) return alert('Votre session a expiré. Reconnectez-vous.');
+            if(!window.MGIStorage) return alert('Le stockage sécurisé n’est pas encore disponible.');
+            const ref = db.collection('documentsPersonnels').doc();
+            let result = null;
+            try {
+                result = await MGIStorage.upload({ uid: currentUser.uid, category: 'personnels', documentId: ref.id, file });
+                await ref.set({
+                    nom: file.name, proprietaireUid: currentUser.uid,
+                    proprietaireNom: utilisateurNom, proprietaireEmail: utilisateurEmail,
+                    fournisseurStockage: 'supabase', bucket: 'mgi-documents',
+                    cheminObjet: result.path, mimeType: result.mimeType, tailleOctets: result.size,
+                    statut: 'disponible', date: new Date().toLocaleDateString('fr-FR'),
+                    dateISO: new Date().toISOString(),
+                    creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                    modifieLe: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                input.value = '';
+                alert('Document envoyé et protégé dans votre coffre-fort.');
+            } catch(error) {
+                if(result && result.path) { try { await MGIStorage.remove(result.path); } catch(_) {} }
+                alert(error.message || 'Impossible d’envoyer le document.');
+            }
         };
 
-        window.supprimerDocPerso = async (id) => { if(confirm("Supprimer ?")) await db.collection("documentsPersonnels").doc(id).delete(); };
+        window.uploadeDocumentPersonnel = async () => {
+            const input = document.getElementById('loc-upload-perso');
+            const file = input && input.files ? input.files[0] : null;
+            const currentUser = firebase.auth().currentUser;
+            if(!file) return alert('Sélectionnez un fichier.');
+            if(!currentUser) return alert('Votre session a expiré. Reconnectez-vous.');
+            if(!window.MGIStorage) return alert('Le stockage sécurisé n’est pas encore disponible.');
+
+            const proprietaireUid = currentUser.uid;
+            const documentRef = db.collection('documentsPersonnels').doc();
+            const documentId = documentRef.id;
+            let uploadResult = null;
+            try {
+                uploadResult = await MGIStorage.upload({
+                    uid: proprietaireUid,
+                    category: 'personnels',
+                    documentId,
+                    file
+                });
+                await documentRef.set({
+                    nom: file.name,
+                    proprietaireUid,
+                    proprietaireNom: utilisateurNom,
+                    proprietaireEmail: utilisateurEmail,
+                    fournisseurStockage: 'supabase',
+                    bucket: 'mgi-documents',
+                    cheminObjet: uploadResult.path,
+                    mimeType: uploadResult.mimeType,
+                    tailleOctets: uploadResult.size,
+                    statut: 'disponible',
+                    date: new Date().toLocaleDateString('fr-FR'),
+                    dateISO: new Date().toISOString(),
+                    creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                    modifieLe: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                if(input) input.value = '';
+                alert('Document envoyé et protégé dans votre coffre-fort.');
+            } catch (error) {
+                console.error('Erreur upload document personnel :', error);
+                if(uploadResult && uploadResult.path) {
+                    try { await MGIStorage.remove(uploadResult.path); } catch (cleanupError) {
+                        console.error('Nettoyage du fichier distant impossible :', cleanupError);
+                    }
+                }
+                alert(error.message || 'Impossible d’envoyer le document.');
+            }
+        };
+
+        window.telechargerDocumentSupabase = async (id) => {
+            try {
+                const snap = await db.collection('documentsPersonnels').doc(id).get();
+                if(!snap.exists) return alert('Document introuvable.');
+                const data = snap.data();
+                if(data.fournisseurStockage !== 'supabase' || !data.cheminObjet) {
+                    return alert('Ce document ancien doit être régénéré ou migré avant téléchargement.');
+                }
+                const result = await MGIStorage.signedUrl(data.cheminObjet, 300);
+                window.open(result.signedUrl, '_blank', 'noopener');
+            } catch(error) { alert(error.message || 'Téléchargement impossible.'); }
+        };
+
+        window.supprimerDocPerso = async (id) => {
+            if(!confirm("Supprimer définitivement ce document ?")) return;
+            try {
+                const ref = db.collection('documentsPersonnels').doc(id);
+                const snap = await ref.get();
+                if(snap.exists) {
+                    const data = snap.data();
+                    if(data.fournisseurStockage === 'supabase' && data.cheminObjet && window.MGIStorage) {
+                        await MGIStorage.remove(data.cheminObjet);
+                    }
+                }
+                await ref.delete();
+            } catch(error) { alert(error.message || 'Suppression impossible.'); }
+        };
 
         // PURGE
         window.nettoyerDonneesDeTest = () => {
@@ -3167,12 +3330,18 @@
         };
 
         // BIBLIOTHEQUE
+        window.telechargerDocumentRecu = async function(id) {
+            try {
+                const result = await MGIStorage.sharedUrl(id, 300);
+                window.open(result.signedUrl, '_blank', 'noopener');
+            } catch(error) { alert(error.message || 'Téléchargement impossible.'); }
+        };
         function ecouterDocsRecusBailleur() {
             db.collection("documentsRecusBailleur").where("bailleurEmail", "==", utilisateurEmail).onSnapshot(snap => {
                 const div = document.getElementById('bai-docs-recus-list');
                 if(!div) return;
                 const docs = [];
-                snap.forEach(d => docs.push(d.data()));
+                snap.forEach(d => docs.push({ _id: d.id, ...d.data() }));
                 docs.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
                 if(docs.length === 0) {
                     div.innerHTML = '<p style="color:#94a3b8; font-size:13px;">Aucun document reçu pour le moment.</p>';
@@ -3185,7 +3354,8 @@
                             <div style="font-size:13px; color:#64748b;">De : ${d.locataireNom || d.locataireEmail} · ${d.nomFichier}</div>
                             <div style="font-size:12px; color:#94a3b8;">Reçu le ${d.dateEnvoi}</div>
                         </div>
-                        <span style="background:#dcfce7; color:#166534; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:600;">${d.statut || 'Reçu'}</span>
+                        <div><span style="background:#dcfce7; color:#166534; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:600;">${d.statut || 'Reçu'}</span>
+                        ${d.fournisseurStockage === 'supabase' && d.cheminObjet ? `<button onclick="telechargerDocumentRecu('${d._id}')" style="margin-left:6px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer;">⬇️ Télécharger</button>` : ''}</div>
                     </div>`).join('');
             });
         }
