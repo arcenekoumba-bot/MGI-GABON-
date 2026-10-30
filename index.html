@@ -525,6 +525,101 @@
             touch-action: none; /* Crucial pour le tactile */
             cursor: crosshair;
         }
+
+        /* ===== Thème moderne MGI — mobile first ===== */
+        :root {
+            --primary: #102a56;
+            --primary-2: #173d78;
+            --accent: #0ea5a4;
+            --accent-2: #14b8a6;
+            --bg: #f4f7fb;
+            --text: #14213d;
+            --muted: #6b7a90;
+            --border: #e5eaf2;
+            --shadow-soft: 0 12px 34px rgba(15, 39, 75, .08);
+            --shadow-card: 0 8px 24px rgba(15, 39, 75, .06);
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background:
+                radial-gradient(circle at 0% 0%, rgba(20,184,166,.09), transparent 32%),
+                linear-gradient(180deg, #f7fafc 0%, var(--bg) 100%);
+            color: var(--text);
+            letter-spacing: .005em;
+        }
+        #login-shell {
+            max-width: 470px !important;
+            margin: 28px auto 48px !important;
+            padding: 0 16px !important;
+        }
+        #login-shell > header {
+            background: linear-gradient(135deg, #0d2348 0%, #173d78 58%, #0b7777 100%) !important;
+            min-height: 185px;
+            padding: 30px 24px 24px !important;
+            border-radius: 26px 26px 0 0 !important;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 18px 38px rgba(16,42,86,.18);
+        }
+        #login-shell > header::after {
+            content: ""; position: absolute; width: 190px; height: 190px; right: -68px; top: -90px;
+            border: 1px solid rgba(255,255,255,.18); border-radius: 50%;
+            box-shadow: 0 0 0 24px rgba(255,255,255,.04), 0 0 0 48px rgba(255,255,255,.03);
+        }
+        #login-logo { max-width: 230px !important; position: relative; z-index: 1; filter: drop-shadow(0 8px 14px rgba(0,0,0,.18)); }
+        #login-shell > .card {
+            margin: 0 !important; padding: 24px !important; border: 1px solid rgba(229,234,242,.9);
+            border-top: 0; border-radius: 0 0 26px 26px !important; box-shadow: var(--shadow-soft);
+        }
+        .tab-system { gap: 4px; padding: 5px; margin: 0 0 22px; border: 0; background: #f1f5f9; border-radius: 13px; }
+        .tab-btn { flex: 1; padding: 11px 14px; border-radius: 9px; font-size: 14px; color: var(--muted); }
+        .tab-btn.active { color: var(--primary); background: #fff; border: 0; box-shadow: 0 3px 10px rgba(15,39,75,.08); }
+        input, select, textarea { border-color: #dbe3ee; background: #fbfdff; border-radius: 11px; min-height: 46px; transition: .2s ease; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px rgba(14,165,164,.12); background: #fff; }
+        label { font-size: 13px; color: #465675; margin-top: 14px; }
+        .btn-main { min-height: 48px; border-radius: 12px; background: linear-gradient(135deg, var(--primary-2), var(--accent)); box-shadow: 0 8px 16px rgba(14,165,164,.16); }
+        .btn-main:hover { opacity: 1; transform: translateY(-1px); filter: saturate(1.08); }
+        .btn-orange { background: linear-gradient(135deg, #d97706, #f59e0b); }
+        .btn-success { background: linear-gradient(135deg, #087f72, #14b8a6); }
+        .btn-danger { border-radius: 9px; }
+        .app-shell { background: transparent; }
+        .sidebar { background: rgba(255,255,255,.96); border-right: 1px solid var(--border); box-shadow: 12px 0 32px rgba(15,39,75,.05); }
+        .sidebar-header { padding: 24px 18px 18px; background: linear-gradient(180deg, #f8fbff, #fff); border-bottom: 1px solid var(--border); }
+        #sidebar-logo { max-width: 145px !important; }
+        .sidebar-nav { padding: 18px 12px; }
+        .sidebar-link { min-height: 44px; border-radius: 11px; color: #64748b; font-size: 13px; }
+        .sidebar-link:hover { background: #eef8f8; color: #0b7777; }
+        .sidebar-link.active-nav { background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 7px 14px rgba(16,42,86,.16); }
+        .sidebar-footer { padding: 16px; background: #fbfdff; }
+        .main-content { padding: 18px 20px 42px; }
+        .main-content > .container { max-width: 1180px !important; }
+        .welcome-banner { position: relative; overflow: hidden; padding: 24px; border-radius: 20px; background: linear-gradient(135deg, #102a56 0%, #173d78 56%, #0e9f9b 100%); box-shadow: 0 14px 28px rgba(16,42,86,.16); }
+        .welcome-banner::after { content: ""; position: absolute; width: 180px; height: 180px; border: 1px solid rgba(255,255,255,.14); border-radius: 50%; right: -55px; top: -80px; box-shadow: 0 0 0 18px rgba(255,255,255,.04), 0 0 0 36px rgba(255,255,255,.03); }
+        .card { border: 1px solid rgba(229,234,242,.95); border-radius: 18px; padding: 22px; box-shadow: var(--shadow-card); }
+        .sub-section-title { margin-top: 6px; border-left: 4px solid var(--accent); color: var(--primary); font-size: 1.05rem; }
+        .payment-dashboard { border: 1px solid #dcecf0; border-radius: 18px; box-shadow: var(--shadow-card); background: linear-gradient(135deg, #effbfa, #f5f7ff); }
+        .stat-card { border: 1px solid #edf1f6; border-left-width: 4px; border-radius: 14px; box-shadow: 0 5px 14px rgba(15,39,75,.05); }
+        .stat-number { font-size: 26px; }
+        .section-bail, .section-incident { border-color: var(--border); border-radius: 14px; background: #fbfdff; }
+        .section-title { background: linear-gradient(135deg, var(--primary), var(--primary-2)); border-radius: 8px; padding: 7px 12px; }
+        table { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        th { background: #f5f8fc; color: #52617b; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+        th, td { border-bottom-color: var(--border); }
+        .menu-toggle { background: linear-gradient(135deg, var(--primary), var(--accent)); border-radius: 11px; box-shadow: 0 8px 18px rgba(16,42,86,.2); padding: 10px 13px; }
+        @media (max-width: 650px) {
+            #login-shell { margin-top: 12px !important; }
+            #login-shell > header { min-height: 155px; padding-top: 24px !important; }
+            #login-shell > .card { padding: 18px !important; }
+            .main-content { padding: 12px 10px 34px; }
+            .card { padding: 17px; border-radius: 16px; }
+            .welcome-banner { padding: 20px 18px; border-radius: 16px; }
+            .payment-stats { grid-template-columns: repeat(3, 1fr); gap: 7px; }
+            .stat-card { padding: 11px 5px; }
+            .stat-number { font-size: 20px; }
+            .stat-label { font-size: 9px; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+        }
     </style>
 </head>
 <body>
@@ -2333,9 +2428,9 @@
                     locataireNom: utilisateurNom, locataireEmail: utilisateurEmail,
                     locataireUid: currentUser.uid, bailleurEmail: bailleurEmailLoc,
                     typeDoc: type, nomFichier: file.name,
-                    fournisseurStockage: 'supabase', bucket: 'mgi-documents',
+                    fournisseurStockage: 'supabase',
                     cheminObjet: uploadResult.path, mimeType: uploadResult.mimeType,
-                    tailleOctets: uploadResult.size, dateEnvoi: date,
+                    tailleOctets: uploadResult.size, bucket: 'MGI documents', dateEnvoi: date,
                     statut: 'Reçu', timestamp: new Date().toISOString(),
                     creeLe: firebase.firestore.FieldValue.serverTimestamp()
                 });
@@ -3181,7 +3276,7 @@
                 await ref.set({
                     nom: file.name, proprietaireUid: currentUser.uid,
                     proprietaireNom: utilisateurNom, proprietaireEmail: utilisateurEmail,
-                    fournisseurStockage: 'supabase', bucket: 'mgi-documents',
+                    fournisseurStockage: 'supabase', bucket: 'MGI documents',
                     cheminObjet: result.path, mimeType: result.mimeType, tailleOctets: result.size,
                     statut: 'disponible', date: new Date().toLocaleDateString('fr-FR'),
                     dateISO: new Date().toISOString(),
@@ -3221,7 +3316,7 @@
                     proprietaireNom: utilisateurNom,
                     proprietaireEmail: utilisateurEmail,
                     fournisseurStockage: 'supabase',
-                    bucket: 'mgi-documents',
+                    bucket: 'MGI documents',
                     cheminObjet: uploadResult.path,
                     mimeType: uploadResult.mimeType,
                     tailleOctets: uploadResult.size,
