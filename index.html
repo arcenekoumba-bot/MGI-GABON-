@@ -1514,6 +1514,11 @@
         function normaliserTexte(s) {
             return (s || '').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         }
+        function echapperHtmlMGI(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, c => ({
+                '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
+            }[c]));
+        }
         // Base de données réelle Firestore.
         // db.collection(...).add/doc/get/where/onSnapshot() sont NATIVEMENT identiques
         // à l'ancienne simulation, donc tout le code existant fonctionne sans changement.
@@ -2932,6 +2937,10 @@
             const choix = parseInt(document.getElementById('i-bailleur-select')?.value || window._contratSelectionneLocataire || '0') || 0;
             const monContrat = contratsLocataire[choix] || contratsLocataire[0] || {};
             const bailleurEmailLoc = monContrat ? (monContrat.bailleurEmail || '') : '';
+            const descriptionIncident = (document.getElementById('i-desc')?.value || '').trim();
+            if(!bailleurEmailLoc) return alert('Aucun bailleur n’est associé au logement sélectionné.');
+            if(!descriptionIncident) return alert('Décrivez brièvement le problème avant d’envoyer le signalement.');
+            if(descriptionIncident.length > 2000) return alert('La description ne doit pas dépasser 2 000 caractères.');
 
             const files = Array.from(document.getElementById('i-photos')?.files || []).slice(0, 3);
             let photos = [];
@@ -2945,13 +2954,17 @@
                 bailleurEmail: bailleurEmailLoc,
                 element: document.getElementById('i-element').value,
                 urgence: document.getElementById('i-urgence').value,
-                description: document.getElementById('i-desc').value,
+                description: descriptionIncident,
                 photos: photos, statut: "Ouvert", archive: false,
                 logementAdresse: monContrat.adresse || '', logementLot: monContrat.lot || '',
                 dateSignalement: new Date().toLocaleDateString('fr-FR'),
                 timestamp: new Date().toISOString()
             });
             alert("Incident signalé !");
+            document.getElementById('i-desc').value = '';
+            document.getElementById('i-photos').value = '';
+            document.getElementById('i-preview-container').innerHTML = '';
+            globalSavedImages = [];
         };
 
         function genererTableauIncidentsDynamique(liste) {
@@ -4100,22 +4113,28 @@
                 const statutCls = statut.replace(' ','-');
                 const nextStatut = statut === 'Ouvert' ? 'En cours' : (statut === 'En cours' ? 'Résolu' : 'Ouvert');
                 const nextLabel = statut === 'Ouvert' ? '▶ Prendre en charge' : (statut === 'En cours' ? '✅ Marquer résolu' : '🔄 Réouvrir');
+                const elementAffiche = echapperHtmlMGI(i.element || 'Incident');
+                const locataireAffiche = echapperHtmlMGI(i.locataireNom || i.locataire || '—');
+                const dateAffichee = echapperHtmlMGI(i.dateSignalement || i.date || '—');
+                const descriptionAffichee = echapperHtmlMGI(i.description || '');
+                const urgenceAffichee = echapperHtmlMGI(i.urgence || 'Normal');
+                const commentaireAffiche = echapperHtmlMGI(i.commentaireBailleur || '');
                 return `<div class="incident-card">
                     <div class="incident-header">
                         <div style="flex:1;">
-                            <div style="font-weight:700;color:var(--primary);font-size:14px;">🛠 ${i.element || 'Incident'}</div>
-                            <div style="font-size:13px;color:#64748b;margin-top:3px;">👤 ${i.locataireNom || i.locataire || '—'} · ${i.dateSignalement || i.date || '—'}</div>
-                            <div style="font-size:13px;color:#475569;margin-top:6px;">${i.description || ''}</div>
+                            <div style="font-weight:700;color:var(--primary);font-size:14px;">🛠 ${elementAffiche}</div>
+                            <div style="font-size:13px;color:#64748b;margin-top:3px;">👤 ${locataireAffiche} · ${dateAffichee}</div>
+                            <div style="font-size:13px;color:#475569;margin-top:6px;white-space:pre-wrap;">${descriptionAffichee}</div>
                             ${Array.isArray(i.photos) && i.photos.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><strong style="width:100%;font-size:12px;color:#64748b;">📷 Photos du signalement</strong>${i.photos.map((photo, index) => `<button onclick="afficherPhotoIncident(${JSON.stringify(photo)})" title="Ouvrir la photo ${index + 1}" style="padding:0;border:0;background:none;cursor:pointer;"><img src="${photo}" alt="Photo du dommage ${index + 1}" style="width:92px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;background:#fff;"></button>`).join('')}</div>` : '<div style="font-size:12px;color:#94a3b8;margin-top:9px;">Aucune photo jointe.</div>'}
                         </div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-                            <span class="urgence-badge urgence-${urgClass(i.urgence)}">${i.urgence || 'Normal'}</span>
+                            <span class="urgence-badge urgence-${urgClass(i.urgence)}">${urgenceAffichee}</span>
                             <button class="statut-incident statut-${statutCls}" onclick="changerStatutIncident('${i._id}','${nextStatut}')">${statut}</button>
                         </div>
                     </div>
                     <div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px;">
                         <button onclick="changerStatutIncident('${i._id}','${nextStatut}')" style="background:none;border:1px solid #e2e8f0;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:#475569;touch-action:manipulation;">${nextLabel}</button>
-                        ${i.commentaireBailleur ? `<span style="font-size:12px;color:#64748b;margin-left:10px;">💬 ${i.commentaireBailleur}</span>` : `<input type="text" placeholder="Ajouter un commentaire..." id="comment-${i._id}" style="margin-left:10px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;width:150px;" onblur="ajouterCommentaireIncident('${i._id}',this.value)">`}
+                        ${i.commentaireBailleur ? `<span style="font-size:12px;color:#64748b;margin-left:10px;">💬 ${commentaireAffiche}</span>` : `<input type="text" placeholder="Ajouter un commentaire..." id="comment-${i._id}" style="margin-left:10px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;width:150px;" onblur="ajouterCommentaireIncident('${i._id}',this.value)">`}
                         <button onclick="archiverIncident('${i._id}', ${i.archive === true ? 'false' : 'true'})" style="margin-left:8px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:600;">${i.archive === true ? '↩ Restaurer' : '🗄️ Archiver'}</button>
                     </div>
                 </div>`;
