@@ -2649,8 +2649,17 @@
             const pdfBlobQ = doc.output('datauristring');
             doc.save(`Quittance_${nom}_${mois || dateEmission}.pdf`);
 
-            const contratNomQ = db._getStore('contrats').find(c => normaliserTexte(c.locataire) === normaliserTexte(nom));
-            const locataireEmailQuittance = contratNomQ ? (contratNomQ.locataireEmail || '') : '';
+            // Utiliser en priorité l'e-mail choisi dans la liste : le cache local
+            // peut contenir plusieurs contrats ou ne pas être encore synchronisé.
+            const emailSelectionne = (document.getElementById('q-email')?.value || '').trim().toLowerCase();
+            const contratNomQ = db._getStore('contrats').find(c =>
+                (emailSelectionne && normaliserTexte(c.locataireEmail || '') === normaliserTexte(emailSelectionne)) ||
+                normaliserTexte(c.locataire) === normaliserTexte(nom)
+            );
+            const locataireEmailQuittance = emailSelectionne || (contratNomQ ? (contratNomQ.locataireEmail || '') : '');
+            if(!locataireEmailQuittance) {
+                return alert('Impossible d’associer cette quittance à un e-mail de locataire. Sélectionnez le locataire dans la liste.');
+            }
 
             await db.collection("quittances").add({
                 locataire: nom, locataireEmail: locataireEmailQuittance,
@@ -2659,10 +2668,8 @@
                 pdfData: pdfBlobQ
             });
             
-            const contratLocataire = db._getStore('contrats').find(c => c.locataire === nom);
-            const locEmailQ = document.getElementById('q-email') ? document.getElementById('q-email').value.trim() : (contratLocataire ? contratLocataire.locataireEmail || '' : '');
             await db.collection("documentsLocataire").add({
-                locataire: nom, locataireEmail: locEmailQ || '',
+                locataire: nom, locataireEmail: locataireEmailQuittance,
                 type: 'quittance', mois: mois,
                 montant: parseInt(montant), dateEmission: dateEmission,
                 bailleurEmail: utilisateurEmail,
@@ -2860,6 +2867,28 @@
         };
 
         // INCIDENTS
+        function lirePhotoIncident(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const maxSide = 1280;
+                        const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.max(1, Math.round(img.width * ratio));
+                        canvas.height = Math.max(1, Math.round(img.height * ratio));
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.72));
+                    };
+                    img.onerror = reject;
+                    img.src = ev.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
         window.previewImages = (e) => {
             const files = e.target.files;
             const container = document.getElementById('i-preview-container');
@@ -2888,14 +2917,22 @@
             );
             const bailleurEmailLoc = monContrat ? (monContrat.bailleurEmail || '') : '';
 
+            const files = Array.from(document.getElementById('i-photos')?.files || []).slice(0, 4);
+            let photos = [];
+            try {
+                photos = await Promise.all(files.map(lirePhotoIncident));
+            } catch(error) {
+                return alert('Impossible de lire une des photos sélectionnées. Réessayez avec des images JPG ou PNG.');
+            }
             await db.collection("incidents").add({
                 locataireNom: utilisateurNom, locataireEmail: utilisateurEmail,
                 bailleurEmail: bailleurEmailLoc,
                 element: document.getElementById('i-element').value,
                 urgence: document.getElementById('i-urgence').value,
                 description: document.getElementById('i-desc').value,
-                photos: globalSavedImages, statut: "Ouvert",
-                dateSignalement: new Date().toLocaleDateString()
+                photos: photos, statut: "Ouvert",
+                dateSignalement: new Date().toLocaleDateString('fr-FR'),
+                timestamp: new Date().toISOString()
             });
             alert("Incident signalé !");
         };
@@ -3975,7 +4012,7 @@
             db.collection("incidents").where("bailleurEmail","==",utilisateurEmail).onSnapshot(snap => {
                 const incidents = [];
                 snap.forEach(d => incidents.push({...d.data(), _id: d.id}));
-                incidents.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+                incidents.sort((a,b) => (b.timestamp || b.dateSignalement || '').localeCompare(a.timestamp || a.dateSignalement || ''));
                 // Compter par statut
                 const counts = { 'Ouvert': 0, 'En cours': 0, 'Résolu': 0 };
                 incidents.forEach(i => { const s = i.statut || 'Ouvert'; if(counts[s] !== undefined) counts[s]++; });
@@ -4010,8 +4047,9 @@
                     <div class="incident-header">
                         <div style="flex:1;">
                             <div style="font-weight:700;color:var(--primary);font-size:14px;">🛠 ${i.element || 'Incident'}</div>
-                            <div style="font-size:13px;color:#64748b;margin-top:3px;">👤 ${i.locataire || '—'} · ${i.date || '—'}</div>
+                            <div style="font-size:13px;color:#64748b;margin-top:3px;">👤 ${i.locataireNom || i.locataire || '—'} · ${i.dateSignalement || i.date || '—'}</div>
                             <div style="font-size:13px;color:#475569;margin-top:6px;">${i.description || ''}</div>
+                            ${Array.isArray(i.photos) && i.photos.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><strong style="width:100%;font-size:12px;color:#64748b;">📷 Photos du signalement</strong>${i.photos.map((photo, index) => `<a href="${photo}" target="_blank" rel="noopener" title="Ouvrir la photo ${index + 1}"><img src="${photo}" alt="Photo du dommage ${index + 1}" style="width:92px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;background:#fff;"></a>`).join('')}</div>` : '<div style="font-size:12px;color:#94a3b8;margin-top:9px;">Aucune photo jointe.</div>'}
                         </div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
                             <span class="urgence-badge urgence-${urgClass(i.urgence)}">${i.urgence || 'Normal'}</span>
