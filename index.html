@@ -1028,10 +1028,11 @@
                             </div>
                         </div>
                         <div class="incident-filter-bar">
-                            <button class="filter-chip active" onclick="filtrerIncidents('tous', this)">Tous</button>
+                            <button class="filter-chip active" onclick="filtrerIncidents('tous', this)">Actifs</button>
                             <button class="filter-chip" onclick="filtrerIncidents('Ouvert', this)">🔴 Ouverts</button>
                             <button class="filter-chip" onclick="filtrerIncidents('En cours', this)">🟡 En cours</button>
                             <button class="filter-chip" onclick="filtrerIncidents('Résolu', this)">🟢 Résolus</button>
+                            <button class="filter-chip" onclick="filtrerIncidents('archives', this)">🗄️ Archives</button>
                         </div>
                         <div id="incidents-liste">
                             <p style="color:#94a3b8; text-align:center; padding:30px 0;">Aucun incident signalé pour le moment.</p>
@@ -1239,6 +1240,11 @@
                     <div class="card">
                         <h3 class="sub-section-title">Signaler un Problème Technique</h3>
                         <div class="form-grid">
+                            <div class="full-width" id="incident-bailleur-wrap" style="display:none;">
+                                <label>Logement / bailleur concerné</label>
+                                <select id="i-bailleur-select"></select>
+                                <small style="display:block;color:#64748b;margin-top:-6px;">Choisissez le logement concerné si vous avez plusieurs bailleurs ou plusieurs logements.</small>
+                            </div>
                             <div><label>Élément concerné</label>
                                 <select id="i-element">
                                     <option>Plomberie</option><option>Électricité</option><option>Serrurerie</option><option>Étanchéité</option><option>Autre</option>
@@ -2661,21 +2667,29 @@
                 return alert('Impossible d’associer cette quittance à un e-mail de locataire. Sélectionnez le locataire dans la liste.');
             }
 
-            await db.collection("quittances").add({
+            const contratIdQ = contratNomQ && (contratNomQ.id || contratNomQ._id) ? (contratNomQ.id || contratNomQ._id) : '';
+            const donneesQ = {
                 locataire: nom, locataireEmail: locataireEmailQuittance,
                 montant: parseInt(montant), dateEmission: dateEmission,
                 mois: mois, adresse: adresse, bailleurEmail: utilisateurEmail,
-                pdfData: pdfBlobQ
-            });
-            
-            await db.collection("documentsLocataire").add({
-                locataire: nom, locataireEmail: locataireEmailQuittance,
-                type: 'quittance', mois: mois,
-                montant: parseInt(montant), dateEmission: dateEmission,
-                bailleurEmail: utilisateurEmail,
-                pdfData: pdfBlobQ
-            });
-            alert("✅ Quittance générée et disponible dans l'espace du locataire !");
+                contratId: contratIdQ, type: 'quittance'
+            };
+            // Ne pas enregistrer le PDF base64 dans Firestore : la limite d'un
+            // document Firestore est de 1 Mo. Le PDF sera régénéré au clic.
+            try {
+                await db.collection("quittances").add(donneesQ);
+                await db.collection("documentsLocataire").add({
+                    locataire: nom, locataireEmail: locataireEmailQuittance,
+                    type: 'quittance', mois: mois,
+                    montant: parseInt(montant), dateEmission: dateEmission,
+                    bailleurEmail: utilisateurEmail,
+                    adresse: adresse, contratId: contratIdQ
+                });
+                alert("✅ Quittance enregistrée et disponible dans l'espace du locataire !");
+            } catch(error) {
+                console.error('Erreur enregistrement quittance :', error);
+                alert('La quittance PDF a été générée, mais son enregistrement a échoué : ' + (error.message || error));
+            }
         };
 
         window.genererContratComplet = async function() {
@@ -2873,13 +2887,13 @@
                 reader.onload = ev => {
                     const img = new Image();
                     img.onload = () => {
-                        const maxSide = 1280;
+                        const maxSide = 900;
                         const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
                         const canvas = document.createElement('canvas');
                         canvas.width = Math.max(1, Math.round(img.width * ratio));
                         canvas.height = Math.max(1, Math.round(img.height * ratio));
                         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.72));
+                        resolve(canvas.toDataURL('image/jpeg', 0.55));
                     };
                     img.onerror = reject;
                     img.src = ev.target.result;
@@ -2911,13 +2925,15 @@
             // Retrouver le bailleur concerné via le contrat du locataire (même logique
             // que pour l'enregistrement d'un paiement Mobile Money).
             const nomNormLoc = normaliserTexte(utilisateurNom);
-            const monContrat = db._getStore('contrats').find(c =>
+            const contratsLocataire = db._getStore('contrats').filter(c =>
                 (utilisateurEmail && c.locataireEmail && normaliserTexte(c.locataireEmail) === normaliserTexte(utilisateurEmail)) ||
                 normaliserTexte(c.locataire) === nomNormLoc
             );
+            const choix = parseInt(document.getElementById('i-bailleur-select')?.value || window._contratSelectionneLocataire || '0') || 0;
+            const monContrat = contratsLocataire[choix] || contratsLocataire[0] || {};
             const bailleurEmailLoc = monContrat ? (monContrat.bailleurEmail || '') : '';
 
-            const files = Array.from(document.getElementById('i-photos')?.files || []).slice(0, 4);
+            const files = Array.from(document.getElementById('i-photos')?.files || []).slice(0, 3);
             let photos = [];
             try {
                 photos = await Promise.all(files.map(lirePhotoIncident));
@@ -2930,7 +2946,8 @@
                 element: document.getElementById('i-element').value,
                 urgence: document.getElementById('i-urgence').value,
                 description: document.getElementById('i-desc').value,
-                photos: photos, statut: "Ouvert",
+                photos: photos, statut: "Ouvert", archive: false,
+                logementAdresse: monContrat.adresse || '', logementLot: monContrat.lot || '',
                 dateSignalement: new Date().toLocaleDateString('fr-FR'),
                 timestamp: new Date().toISOString()
             });
@@ -3143,6 +3160,41 @@
             ajouterListenerEntree('loc-msg-text', window.envoyerMessageLocataire);
         });
 
+        window._quittancesCache = window._quittancesCache || {};
+        window.telechargerQuittanceParId = function(id) {
+            const q = window._quittancesCache[id];
+            if(!q) return alert('Quittance introuvable. Rechargez la page puis réessayez.');
+            if(q.pdfData) {
+                const lien = document.createElement('a');
+                lien.href = q.pdfData;
+                lien.download = `Quittance_${q.locataire || 'loyer'}_${q.mois || ''}.pdf`;
+                lien.click();
+                return;
+            }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+            const pageW = 210, margin = 20;
+            doc.setFillColor(30,58,138); doc.rect(0,0,pageW,40,'F');
+            ajouterLogoMGI(doc,20,5,42,11);
+            doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(22);
+            doc.text('MA GESTION IMMO', pageW/2,18,{align:'center'});
+            doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.text('Solutions Immobilières Modernes',pageW/2,26,{align:'center'});
+            doc.setTextColor(30,58,138); doc.setFont('helvetica','bold'); doc.setFontSize(18);
+            doc.text('QUITTANCE DE LOYER',pageW/2,56,{align:'center'});
+            doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(50,50,50);
+            doc.text(`Locataire : ${q.locataire || '—'}`,margin,78);
+            doc.text(`Adresse du bien : ${q.adresse || '—'}`,margin,88);
+            doc.text(`Période : ${q.mois || '—'}`,margin,98);
+            doc.setFillColor(240,249,255); doc.setDrawColor(59,130,246); doc.roundedRect(margin,110,pageW-40,28,4,4,'FD');
+            doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(30,58,138);
+            doc.text('MONTANT PAYÉ',margin+8,126);
+            doc.setTextColor(16,185,129); doc.setFontSize(16); doc.text(`${(q.montant||0).toLocaleString('fr-FR')} FCFA`,pageW-margin-8,126,{align:'right'});
+            doc.setTextColor(100,100,100); doc.setFont('helvetica','normal'); doc.setFontSize(10);
+            doc.text(`Émise le : ${q.dateEmission || '—'}`,margin,155);
+            doc.text('Document généré avec MGI — Ma Gestion Immo',pageW/2,291,{align:'center'});
+            doc.save(`Quittance_${q.locataire || 'loyer'}_${q.mois || ''}.pdf`);
+        };
+
         // DOCUMENTS LOCATAIRE
         function ecouterDocumentsLocataire(nom) {
             const emailLoc = utilisateurEmail;
@@ -3230,7 +3282,9 @@
                 rawSnap.forEach(doc => {
                     const q = doc.data();
                     if(q.type && q.type !== 'quittance') return; // ignorer contrat / signature dans cette liste
-                    quittances.push(q);
+                    const qAvecId = Object.assign({}, q, { _id: doc.id });
+                    window._quittancesCache[doc.id] = qAvecId;
+                    quittances.push(qAvecId);
                 });
                 quittances.sort((a,b) => (b.dateEmission||'').localeCompare(a.dateEmission||''));
                 if(quittances.length === 0) {
@@ -3238,7 +3292,7 @@
                 } else {
                     quittances.forEach((q, idx) => {
                         const moisLabel = q.mois ? (() => { const [y,m] = q.mois.split('-'); return new Date(y, m-1).toLocaleDateString('fr-FR', {month:'long', year:'numeric'}); })() : '—';
-                        const dlBtn = q.pdfData ? `<a href="${q.pdfData}" download="Quittance_${moisLabel}.pdf" style="display:inline-block; margin-top:6px; background:#1d4ed8; color:#fff; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:600; text-decoration:none;">⬇️ Télécharger PDF</a>` : '';
+                        const dlBtn = `<button onclick="telechargerQuittanceParId('${q._id}')" style="display:inline-block; margin-top:6px; background:#1d4ed8; color:#fff; border:0; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:600;">⬇️ Télécharger PDF</button>`;
                         html2 += `<div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:14px 16px; margin-bottom:10px;">
                             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
                                 <div>
@@ -3564,7 +3618,8 @@
                 tbody.innerHTML = "";
                 snap.forEach(doc => {
                     const q = doc.data();
-                    tbody.innerHTML += `<tr><td>${q.dateEmission}</td><td>${q.locataire}</td><td>${q.mois}</td><td>${(q.montant||0).toLocaleString('fr-FR')} FCFA</td><td>${q.pdfData ? `<a href="${q.pdfData}" download="Quittance_${q.locataire}_${q.mois}.pdf" style="background:#1d4ed8;color:#fff;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">⬇️ PDF</a>` : '—'}</td></tr>`;
+                    window._quittancesCache[doc.id] = Object.assign({}, q, { _id: doc.id });
+                    tbody.innerHTML += `<tr><td>${q.dateEmission}</td><td>${q.locataire}</td><td>${q.mois}</td><td>${(q.montant||0).toLocaleString('fr-FR')} FCFA</td><td><button onclick="telechargerQuittanceParId('${doc.id}')" style="background:#1d4ed8;color:#fff;border:0;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">⬇️ PDF</button></td></tr>`;
                 });
             });
         }
@@ -4015,7 +4070,7 @@
                 incidents.sort((a,b) => (b.timestamp || b.dateSignalement || '').localeCompare(a.timestamp || a.dateSignalement || ''));
                 // Compter par statut
                 const counts = { 'Ouvert': 0, 'En cours': 0, 'Résolu': 0 };
-                incidents.forEach(i => { const s = i.statut || 'Ouvert'; if(counts[s] !== undefined) counts[s]++; });
+                incidents.filter(i => i.archive !== true).forEach(i => { const s = i.statut || 'Ouvert'; if(counts[s] !== undefined) counts[s]++; });
                 const elO = document.getElementById('i-count-ouvert');
                 const elE = document.getElementById('i-count-encours');
                 const elR = document.getElementById('i-count-resolu');
@@ -4032,7 +4087,9 @@
         function afficherIncidents(incidents, filtre) {
             const div = document.getElementById('incidents-liste');
             if(!div) return;
-            const filtered = filtre === 'tous' ? incidents : incidents.filter(i => (i.statut||'Ouvert') === filtre);
+            const filtered = filtre === 'archives'
+                ? incidents.filter(i => i.archive === true)
+                : incidents.filter(i => i.archive !== true && (filtre === 'tous' || (i.statut||'Ouvert') === filtre));
             if(filtered.length === 0) {
                 div.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:30px 0;">Aucun incident dans cette catégorie.</p>';
                 return;
@@ -4049,7 +4106,7 @@
                             <div style="font-weight:700;color:var(--primary);font-size:14px;">🛠 ${i.element || 'Incident'}</div>
                             <div style="font-size:13px;color:#64748b;margin-top:3px;">👤 ${i.locataireNom || i.locataire || '—'} · ${i.dateSignalement || i.date || '—'}</div>
                             <div style="font-size:13px;color:#475569;margin-top:6px;">${i.description || ''}</div>
-                            ${Array.isArray(i.photos) && i.photos.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><strong style="width:100%;font-size:12px;color:#64748b;">📷 Photos du signalement</strong>${i.photos.map((photo, index) => `<a href="${photo}" target="_blank" rel="noopener" title="Ouvrir la photo ${index + 1}"><img src="${photo}" alt="Photo du dommage ${index + 1}" style="width:92px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;background:#fff;"></a>`).join('')}</div>` : '<div style="font-size:12px;color:#94a3b8;margin-top:9px;">Aucune photo jointe.</div>'}
+                            ${Array.isArray(i.photos) && i.photos.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><strong style="width:100%;font-size:12px;color:#64748b;">📷 Photos du signalement</strong>${i.photos.map((photo, index) => `<button onclick="afficherPhotoIncident(${JSON.stringify(photo)})" title="Ouvrir la photo ${index + 1}" style="padding:0;border:0;background:none;cursor:pointer;"><img src="${photo}" alt="Photo du dommage ${index + 1}" style="width:92px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;background:#fff;"></button>`).join('')}</div>` : '<div style="font-size:12px;color:#94a3b8;margin-top:9px;">Aucune photo jointe.</div>'}
                         </div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
                             <span class="urgence-badge urgence-${urgClass(i.urgence)}">${i.urgence || 'Normal'}</span>
@@ -4059,10 +4116,25 @@
                     <div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px;">
                         <button onclick="changerStatutIncident('${i._id}','${nextStatut}')" style="background:none;border:1px solid #e2e8f0;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:#475569;touch-action:manipulation;">${nextLabel}</button>
                         ${i.commentaireBailleur ? `<span style="font-size:12px;color:#64748b;margin-left:10px;">💬 ${i.commentaireBailleur}</span>` : `<input type="text" placeholder="Ajouter un commentaire..." id="comment-${i._id}" style="margin-left:10px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;width:150px;" onblur="ajouterCommentaireIncident('${i._id}',this.value)">`}
+                        <button onclick="archiverIncident('${i._id}', ${i.archive === true ? 'false' : 'true'})" style="margin-left:8px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:600;">${i.archive === true ? '↩ Restaurer' : '🗄️ Archiver'}</button>
                     </div>
                 </div>`;
             }).join('');
         }
+
+        window.afficherPhotoIncident = function(photo) {
+            let modal = document.getElementById('incident-photo-modal');
+            if(!modal) {
+                modal = document.createElement('div');
+                modal.id = 'incident-photo-modal';
+                modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                modal.innerHTML = '<button id="incident-photo-close" style="position:absolute;top:18px;right:18px;background:#fff;color:#0f172a;border:0;border-radius:50%;width:42px;height:42px;font-size:24px;">×</button><img id="incident-photo-large" alt="Photo du dommage" style="max-width:100%;max-height:88vh;object-fit:contain;border-radius:10px;">';
+                document.body.appendChild(modal);
+                modal.onclick = e => { if(e.target === modal || e.target.id === 'incident-photo-close') modal.style.display='none'; };
+            }
+            document.getElementById('incident-photo-large').src = photo;
+            modal.style.display = 'flex';
+        };
 
         window.filtrerIncidents = function(filtre, btn) {
             _incidentFiltreActif = filtre;
@@ -4071,6 +4143,13 @@
             const incidents = db._getStore('incidents').filter(i => i.bailleurEmail === utilisateurEmail);
             incidents.sort((a,b) => (b.date||'').localeCompare(a.date||''));
             afficherIncidents(incidents, filtre);
+        };
+
+        window.archiverIncident = async function(id, archive) {
+            try {
+                await db.collection('incidents').doc(id).update({ archive: archive, dateArchivage: archive ? new Date().toLocaleDateString('fr-FR') : '' });
+                alert(archive ? 'Incident archivé.' : 'Incident restauré.');
+            } catch(error) { alert(error.message || 'Impossible de modifier l’archivage.'); }
         };
 
         window.changerStatutIncident = async function(id, newStatut) {
@@ -4313,6 +4392,16 @@
             }
             const indexSelectionne = parseInt(window._contratSelectionneLocataire || '0') || 0;
             const monContrat = tousMesContrats[indexSelectionne] || tousMesContrats[0] || {};
+            const incidentWrap = document.getElementById('incident-bailleur-wrap');
+            const incidentSelect = document.getElementById('i-bailleur-select');
+            if(incidentWrap && incidentSelect) {
+                incidentSelect.innerHTML = tousMesContrats.map((c, i) => {
+                    const lieu = [c.lot, c.adresse].filter(Boolean).join(' — ') || 'Logement non renseigné';
+                    return `<option value="${i}">${lieu} · ${c.bailleur || c.bailleurEmail || 'Bailleur inconnu'}</option>`;
+                }).join('');
+                incidentSelect.value = String(indexSelectionne);
+                incidentWrap.style.display = tousMesContrats.length > 1 ? 'block' : 'none';
+            }
             // Bailleur du logement actuellement affiché : sert à isoler les paiements
             // et incidents qui appartiennent à CE bail précis (utile si le locataire
             // a plusieurs bailleurs différents).
