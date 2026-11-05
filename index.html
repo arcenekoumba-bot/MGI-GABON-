@@ -539,6 +539,34 @@
             --shadow-soft: 0 12px 34px rgba(15, 39, 75, .08);
             --shadow-card: 0 8px 24px rgba(15, 39, 75, .06);
         }
+        body.dark-mode {
+            --bg: #0f172a; --text: #e5edf8; --muted: #a8b6ca; --border: #293852;
+            --white: #162238; --shadow-soft: 0 12px 34px rgba(0,0,0,.28); --shadow-card: 0 8px 24px rgba(0,0,0,.22);
+            background: #0b1220; color: var(--text);
+        }
+        body.dark-mode .sidebar, body.dark-mode .sidebar-footer, body.dark-mode .sidebar-header { background:#111c30 !important; border-color:#293852 !important; }
+        body.dark-mode .card, body.dark-mode .analytics-card, body.dark-mode .section-bail, body.dark-mode .section-incident, body.dark-mode .payment-dashboard, body.dark-mode .stat-card { background:#162238 !important; border-color:#293852 !important; color:var(--text); }
+        body.dark-mode .sub-section-title, body.dark-mode .kpi-label, body.dark-mode .stat-label { color:#c7d5e8 !important; }
+        body.dark-mode .sidebar-link { color:#b5c3d8 !important; }
+        body.dark-mode .sidebar-link:hover { background:#1d2d47 !important; color:#75e0d6 !important; }
+        body.dark-mode input, body.dark-mode select, body.dark-mode textarea { background:#0f1a2d !important; border-color:#344661 !important; color:#edf4ff !important; }
+        body.dark-mode input::placeholder, body.dark-mode textarea::placeholder { color:#8393aa; }
+        body.dark-mode label { color:#b9c7da !important; }
+        body.dark-mode table { background:#162238 !important; color:#e5edf8 !important; border-color:#293852 !important; }
+        body.dark-mode th { background:#1d2d47 !important; color:#c7d5e8 !important; }
+        body.dark-mode td { border-color:#293852 !important; color:#dce7f5 !important; }
+        body.dark-mode .tab-system { background:#1a2941 !important; }
+        body.dark-mode .tab-btn.active { background:#263957 !important; color:#75e0d6 !important; }
+        body.dark-mode #mgi-chatbot-panel, body.dark-mode #chatbot-suggestions, body.dark-mode #chatbot-messages { background:#162238 !important; color:#e5edf8 !important; border-color:#293852 !important; }
+        body.dark-mode #chatbot-input { background:#0f1a2d !important; color:#edf4ff !important; border-color:#344661 !important; }
+        body.dark-mode .chat-msg.bot { background:#1d2d47 !important; color:#e5edf8 !important; border-color:#344661 !important; }
+        body.dark-mode .chat-sugg { background:#163b42 !important; color:#8be8dd !important; border-color:#216a70 !important; }
+        body.dark-mode .modal-content { background:#162238 !important; color:#e5edf8 !important; }
+        body.dark-mode .role-label { background:#0f1a2d !important; border-color:#344661 !important; color:#c7d5e8 !important; }
+        body.dark-mode .role-label.selected, body.dark-mode .role-label:hover { background:#173b4a !important; border-color:#0ea5a4 !important; }
+        body.dark-mode a { color:#75e0d6; }
+        #theme-toggle-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; margin-bottom:9px; padding:10px 12px; border:1px solid var(--border); border-radius:9px; background:transparent; color:var(--text); cursor:pointer; font-weight:600; touch-action:manipulation; }
+        #theme-toggle-btn:hover { background:rgba(14,165,164,.12); }
         * { box-sizing: border-box; }
         body {
             font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -640,6 +668,27 @@
         if(msgConn) { msgConn.style.display = 'none'; msgConn.textContent = ''; }
         if(msgIns) { msgIns.style.display = 'none'; msgIns.textContent = ''; }
     }
+    (function initialiserThemeMGI() {
+        try { if(localStorage.getItem('mgi-theme') === 'dark') document.body.classList.add('dark-mode'); } catch(e) {}
+    })();
+    window.basculerTheme = function() {
+        document.body.classList.toggle('dark-mode');
+        const sombre = document.body.classList.contains('dark-mode');
+        try { localStorage.setItem('mgi-theme', sombre ? 'dark' : 'light'); } catch(e) {}
+        const bouton = document.getElementById('theme-toggle-btn');
+        if(bouton) {
+            bouton.innerHTML = sombre ? '☀️ <span>Mode clair</span>' : '🌙 <span>Mode sombre</span>';
+            bouton.setAttribute('aria-label', sombre ? 'Activer le mode clair' : 'Activer le mode sombre');
+        }
+    };
+    document.addEventListener('DOMContentLoaded', function() {
+        const sombre = document.body.classList.contains('dark-mode');
+        const bouton = document.getElementById('theme-toggle-btn');
+        if(bouton) {
+            bouton.innerHTML = sombre ? '☀️ <span>Mode clair</span>' : '🌙 <span>Mode sombre</span>';
+            bouton.setAttribute('aria-label', sombre ? 'Activer le mode clair' : 'Activer le mode sombre');
+        }
+    });
     // Auth réelle Firebase (même API que l'ancien mock : signInWithEmailAndPassword,
     // createUserWithEmailAndPassword, onAuthStateChanged, currentUser, signOut)
     var auth = firebase.auth();
@@ -827,6 +876,7 @@
                     <strong id="txt-welcome">Bienvenue</strong><br>
                     <span id="txt-info" style="color: #64748b;">...</span>
                 </div>
+                <button id="theme-toggle-btn" type="button" onclick="basculerTheme()" aria-label="Activer le mode sombre">🌙 <span>Mode sombre</span></button>
                 <button class="btn-danger" style="width: 100%;" onclick="seDeconnecter()">Déconnexion</button>
             </div>
         </aside>
