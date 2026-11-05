@@ -1264,6 +1264,18 @@
                             <button class="btn-main btn-orange full-width" onclick="signalerIncident()">Envoyer le Signalement</button>
                         </div>
                     </div>
+                    <div class="card" style="margin-top:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <h3 class="sub-section-title" style="margin:0;">🗂️ Mes signalements</h3>
+                            <div class="incident-filter-bar" style="margin:0;">
+                                <button class="filter-chip active" onclick="filtrerIncidentsLocataire('actifs', this)">Actifs</button>
+                                <button class="filter-chip" onclick="filtrerIncidentsLocataire('archives', this)">Archives</button>
+                            </div>
+                        </div>
+                        <div id="incidents-locataire-liste">
+                            <p style="color:#94a3b8;text-align:center;padding:20px 0;">Aucun signalement pour le moment.</p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Section Paiement du Loyer (Locataire) -->
@@ -2974,6 +2986,51 @@
             afficherIncidents(liste, _incidentFiltreActif || 'tous');
         }
 
+        window._incidentFiltreLocataire = 'actifs';
+        function afficherIncidentsLocataire(incidents, filtre) {
+            const div = document.getElementById('incidents-locataire-liste');
+            if(!div) return;
+            const liste = incidents.filter(i => filtre === 'archives' ? i.archive === true : i.archive !== true);
+            if(!liste.length) {
+                div.innerHTML = `<p style="color:#94a3b8;text-align:center;padding:20px 0;">Aucun incident ${filtre === 'archives' ? 'archivé' : 'actif'}.</p>`;
+                return;
+            }
+            div.innerHTML = liste.sort((a,b) => (b.timestamp || '').localeCompare(a.timestamp || '')).map(i => {
+                const id = i._id || i.id;
+                const element = echapperHtmlMGI(i.element || 'Incident');
+                const description = echapperHtmlMGI(i.description || '');
+                const statut = echapperHtmlMGI(i.statut || 'Ouvert');
+                const date = echapperHtmlMGI(i.dateSignalement || '—');
+                const photos = Array.isArray(i.photos) ? i.photos : [];
+                return `<div class="incident-card" style="margin-bottom:10px;">
+                    <div style="font-weight:700;color:var(--primary);">🛠 ${element} <span style="font-size:12px;color:#64748b;font-weight:500;">· ${date}</span></div>
+                    <div style="font-size:13px;color:#475569;margin-top:5px;white-space:pre-wrap;">${description}</div>
+                    <div style="margin-top:7px;font-size:13px;"><strong>Statut :</strong> ${statut}${i.archive === true ? ' · 🗄️ Archivé' : ''}</div>
+                    ${photos.length ? `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:9px;">${photos.map((photo,index) => { const key = 'loc-' + id + '-' + index; window._incidentPhotosCache[key] = photo; return `<button type="button" onclick="afficherPhotoIncidentKey('${key}')" style="padding:0;border:0;background:none;"><img src="${photo}" alt="Photo du signalement" style="width:70px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;"></button>`; }).join('')}</div>` : ''}
+                    <button type="button" onclick="archiverIncidentLocataire('${id}', ${i.archive === true ? 'false' : 'true'})" style="margin-top:9px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:600;">${i.archive === true ? '↩ Restaurer' : '🗄️ Archiver'}</button>
+                </div>`;
+            }).join('');
+        }
+
+        window.filtrerIncidentsLocataire = function(filtre, btn) {
+            window._incidentFiltreLocataire = filtre;
+            if(btn) {
+                const parent = btn.parentElement;
+                if(parent) parent.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+            initialiserDashboardLocataire();
+        };
+
+        window.archiverIncidentLocataire = async function(id, archive) {
+            if(!id) return alert('Signalement introuvable.');
+            try {
+                await db.collection('incidents').doc(id).update({ archive: archive, dateArchivageLocataire: archive ? new Date().toLocaleDateString('fr-FR') : '' });
+                alert(archive ? 'Signalement archivé.' : 'Signalement restauré.');
+                initialiserDashboardLocataire();
+            } catch(error) { alert(error.message || 'Impossible de modifier l’archivage.'); }
+        };
+
         window.supprimerIncident = async (id) => { if(confirm("Supprimer ?")) await db.collection("incidents").doc(id).delete(); };
 
         // MESSAGERIE
@@ -4097,6 +4154,13 @@
             });
         }
 
+        window._incidentPhotosCache = window._incidentPhotosCache || {};
+        function boutonPhotoIncident(photo, incidentId, index) {
+            const key = 'inc-' + incidentId + '-' + index;
+            window._incidentPhotosCache[key] = photo;
+            return `<button type="button" onclick="afficherPhotoIncidentKey('${key}')" title="Ouvrir la photo ${index + 1}" style="padding:0;border:0;background:none;cursor:pointer;"><img src="${photo}" alt="Photo du dommage ${index + 1}" style="width:92px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;background:#fff;"></button>`;
+        }
+
         function afficherIncidents(incidents, filtre) {
             const div = document.getElementById('incidents-liste');
             if(!div) return;
@@ -4125,7 +4189,7 @@
                             <div style="font-weight:700;color:var(--primary);font-size:14px;">🛠 ${elementAffiche}</div>
                             <div style="font-size:13px;color:#64748b;margin-top:3px;">👤 ${locataireAffiche} · ${dateAffichee}</div>
                             <div style="font-size:13px;color:#475569;margin-top:6px;white-space:pre-wrap;">${descriptionAffichee}</div>
-                            ${Array.isArray(i.photos) && i.photos.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><strong style="width:100%;font-size:12px;color:#64748b;">📷 Photos du signalement</strong>${i.photos.map((photo, index) => `<button onclick="afficherPhotoIncident(${JSON.stringify(photo)})" title="Ouvrir la photo ${index + 1}" style="padding:0;border:0;background:none;cursor:pointer;"><img src="${photo}" alt="Photo du dommage ${index + 1}" style="width:92px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;background:#fff;"></button>`).join('')}</div>` : '<div style="font-size:12px;color:#94a3b8;margin-top:9px;">Aucune photo jointe.</div>'}
+                            ${Array.isArray(i.photos) && i.photos.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><strong style="width:100%;font-size:12px;color:#64748b;">📷 Photos du signalement</strong>${i.photos.map((photo, index) => boutonPhotoIncident(photo, i._id, index)).join('')}</div>` : '<div style="font-size:12px;color:#94a3b8;margin-top:9px;">Aucune photo jointe.</div>'}
                         </div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
                             <span class="urgence-badge urgence-${urgClass(i.urgence)}">${urgenceAffichee}</span>
@@ -4147,12 +4211,19 @@
                 modal = document.createElement('div');
                 modal.id = 'incident-photo-modal';
                 modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-                modal.innerHTML = '<button id="incident-photo-close" style="position:absolute;top:18px;right:18px;background:#fff;color:#0f172a;border:0;border-radius:50%;width:42px;height:42px;font-size:24px;">×</button><img id="incident-photo-large" alt="Photo du dommage" style="max-width:100%;max-height:88vh;object-fit:contain;border-radius:10px;">';
+                modal.innerHTML = '<button id="incident-photo-close" style="position:absolute;top:18px;right:18px;background:#fff;color:#0f172a;border:0;border-radius:50%;width:42px;height:42px;font-size:24px;">×</button><div style="display:flex;flex-direction:column;align-items:center;gap:14px;"><img id="incident-photo-large" alt="Photo du dommage" style="max-width:100%;max-height:78vh;object-fit:contain;border-radius:10px;"><a id="incident-photo-download" download="photo-incident.jpg" style="background:#fff;color:#1e3a8a;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700;">⬇️ Télécharger la photo</a></div>';
                 document.body.appendChild(modal);
                 modal.onclick = e => { if(e.target === modal || e.target.id === 'incident-photo-close') modal.style.display='none'; };
             }
             document.getElementById('incident-photo-large').src = photo;
+            document.getElementById('incident-photo-download').href = photo;
             modal.style.display = 'flex';
+        };
+
+        window.afficherPhotoIncidentKey = function(key) {
+            const photo = window._incidentPhotosCache[key];
+            if(!photo) return alert('Photo indisponible. Rechargez la liste puis réessayez.');
+            afficherPhotoIncident(photo);
         };
 
         window.filtrerIncidents = function(filtre, btn) {
@@ -4440,11 +4511,15 @@
                 return matchIdentite && matchBailleur && matchResidence;
             });
             const contrats = tousMesContrats;
-            const incidents = db._getStore('incidents').filter(i =>
-                ((utilisateurEmail && i.locataireEmail && normaliserTexte(i.locataireEmail) === normaliserTexte(utilisateurEmail)) ||
-                normaliserTexte(i.locataire) === nomNormLoc) &&
-                (!bailleurEmailActuel || !i.bailleurEmail || i.bailleurEmail === bailleurEmailActuel)
-            );
+            const incidents = db._getStore('incidents').filter(i => {
+                const matchIdentite = (utilisateurEmail && i.locataireEmail && normaliserTexte(i.locataireEmail) === normaliserTexte(utilisateurEmail)) ||
+                    normaliserTexte(i.locataire) === nomNormLoc;
+                const matchBailleur = !bailleurEmailActuel || !i.bailleurEmail || i.bailleurEmail === bailleurEmailActuel;
+                const matchResidence = !filtrerParResidence || (!i.logementLot && !i.logementAdresse) ||
+                    ((i.logementLot || '') === residenceActuelle.lot && (i.logementAdresse || '') === residenceActuelle.adresse);
+                return matchIdentite && matchBailleur && matchResidence;
+            }).map(i => Object.assign({}, i, { _id: i.id || i._id }));
+            afficherIncidentsLocataire(incidents, window._incidentFiltreLocataire || 'actifs');
 
             const loyer = monContrat.loyer || 0;
             const adresse = monContrat.adresse || 'Adresse non renseignée';
