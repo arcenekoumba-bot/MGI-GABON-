@@ -1721,12 +1721,34 @@
             lancerDashboard(roleSelectionne, nom, biens, user.email);
         };
 
+        function verrouillerInterfacePublique() {
+            const app = document.getElementById('app-shell');
+            const login = document.getElementById('login-shell');
+            const menu = document.getElementById('menu-toggle-btn');
+            const sidebar = document.getElementById('app-sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            const profile = document.getElementById('modal-profil');
+            const chatBtn = document.getElementById('mgi-chatbot-btn');
+            const chatPanel = document.getElementById('mgi-chatbot-panel');
+            if(app) app.classList.remove('active');
+            if(login) login.style.display = 'block';
+            if(menu) menu.classList.remove('visible');
+            if(sidebar) sidebar.classList.remove('open');
+            if(overlay) overlay.classList.remove('active');
+            if(profile) profile.classList.remove('show');
+            if(chatBtn) chatBtn.style.display = 'none';
+            if(chatPanel) chatPanel.style.display = 'none';
+        }
+
         window.seDeconnecter = async function() {
+            verrouillerInterfacePublique();
             await auth.signOut();
-            document.getElementById('app-shell').classList.remove('active');
-            document.getElementById('login-shell').style.display = 'block';
-            document.getElementById('in-email-conn').value = '';
-            document.getElementById('in-pass-conn').value = '';
+            utilisateurEmail = '';
+            window._chatbotContexteLocataire = null;
+            const email = document.getElementById('in-email-conn');
+            const pass = document.getElementById('in-pass-conn');
+            if(email) email.value = '';
+            if(pass) pass.value = '';
             const msgEl = document.getElementById('auth-message');
             if(msgEl) msgEl.style.display = 'none';
         };
@@ -1758,8 +1780,7 @@
 
         auth.onAuthStateChanged(async (user) => {
             if (!user) {
-                document.getElementById('login-shell').style.display = 'block';
-                document.getElementById('app-shell').classList.remove('active');
+                verrouillerInterfacePublique();
             } else {
                 utilisateurEmail = user.email;
                 try {
@@ -5018,12 +5039,20 @@
         }
         function initChat(){if(_init)return;_init=true;addMsg("Bonjour ! 👋 Je suis votre assistant MGI. Que puis-je faire pour vous ?","bot");showSugg();}
         window.toggleChatbot=function(){
+            if(!firebase.auth().currentUser){
+                var publicBtn=document.getElementById("mgi-chatbot-btn");
+                var publicPanel=document.getElementById("mgi-chatbot-panel");
+                if(publicBtn) publicBtn.style.display="none";
+                if(publicPanel) publicPanel.style.display="none";
+                return;
+            }
             var panel=document.getElementById("mgi-chatbot-panel");
             _open=!_open;
             if(_open){panel.style.display="flex";initChat();}
             else{panel.style.display="none";}
         };
         window.envoyerMessageChatbot=function(){
+            if(!firebase.auth().currentUser) return;
             var inp=document.getElementById("chatbot-input");
             if(!inp)return;
             var msg=inp.value.trim();if(!msg)return;inp.value="";
@@ -5043,6 +5072,7 @@
         });
         var _origAMT=window.afficherMenuToggle;
         window.afficherMenuToggle=function(show){
+            show=!!show && !!firebase.auth().currentUser;
             if(_origAMT)_origAMT(show);
             var btn=document.getElementById("mgi-chatbot-btn");
             if(!btn)return;
