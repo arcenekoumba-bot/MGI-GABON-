@@ -1002,8 +1002,13 @@
                             <div class="form-grid">
                                 <div><label>Loyer Mensuel (FCFA)</label><input type="number" id="c-loy-full"></div>
                                 <div><label>Caution (FCFA)</label><input type="number" id="c-cau-full"></div>
+                                <div><label>Charges mensuelles (FCFA)</label><input type="number" id="c-charges" placeholder="0 si aucune"></div>
+                                <div><label>Échéance habituelle</label><input type="text" id="c-echeance" placeholder="Ex: le 05 de chaque mois"></div>
+                                <div><label>Mode de paiement</label><select id="c-mode-paiement"><option>Virement bancaire</option><option>Mobile Money</option><option>Espèces contre reçu</option><option>Autre</option></select></div>
                                 <div><label>Durée du bail</label><input type="text" id="c-duree" placeholder="Ex: 1 an renouvelable"></div>
                                 <div><label>Date de prise d'effet</label><input type="date" id="c-effet"></div>
+                                <div><label>Préavis souhaité</label><input type="text" id="c-preavis" placeholder="Ex: selon la réglementation applicable"></div>
+                                <div class="full-width"><label>Conditions particulières</label><textarea id="c-conditions" placeholder="Ex: animaux, parking, entretien du jardin, règles de copropriété..."></textarea></div>
                                 <div><label>Fait à</label><input type="text" id="c-signature-lieu" value="Libreville"></div>
                                 <div><label>Le</label><input type="date" id="c-signature-date"></div>
                             </div>
@@ -1011,6 +1016,7 @@
                             <canvas id="signature-pad" width="600" height="200" style="border:2px dashed #cbd5e1; width:100%; height:150px; border-radius:8px; background:#fff;"></canvas>
                             <button class="btn-danger" style="margin-top:5px;" onclick="effacerSignature()">Effacer Signature</button>
                         </div>
+                        <p style="margin:12px 0 0;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:12px;">Ce document est un modèle généré par MGI. Faites-le relire et adapter par un professionnel du droit au Gabon avant toute utilisation définitive.</p>
                         <button class="btn-main" style="margin-top:20px;" onclick="genererContratComplet()">Générer le Contrat (PDF) & Archiver</button>
                         <div id="cloud-status" class="cloud-badge">✅ Contrat sauvegardé localement !</div>
                     </div>
@@ -2207,6 +2213,7 @@
             y = 68;
 
             function sectionHeader(title) {
+                if (y > 255) { doc.addPage(); y = 25; }
                 doc.setFillColor(30, 58, 138);
                 doc.rect(margin, y - 5, pageW - margin * 2, 8, 'F');
                 doc.setTextColor(255, 255, 255);
@@ -2252,12 +2259,30 @@
             if (c.caution) ligne('DÉPÔT DE GARANTIE', `${parseInt(c.caution).toLocaleString('fr-FR')} FCFA`);
             y += 3;
 
-            sectionHeader('IV. ENGAGEMENTS');
+            sectionHeader('IV. CONDITIONS PRATIQUES');
+            if (c.charges) ligne('CHARGES MENSUELLES', `${parseInt(c.charges).toLocaleString('fr-FR')} FCFA`);
+            if (c.echeance) ligne('ÉCHÉANCE', c.echeance);
+            if (c.modePaiement) ligne('MODE DE PAIEMENT', c.modePaiement);
+            if (c.preavis) ligne('PRÉAVIS', c.preavis);
+            y += 3;
+
+            sectionHeader('V. ENGAGEMENTS DES PARTIES');
             doc.setFontSize(9.5);
-            const textEngagement = "Le locataire s'oblige à payer le loyer aux échéances convenues et à maintenir les lieux en bon état de réparations locatives conformément à la réglementation en vigueur.";
+            const textEngagement = "Le bailleur s'engage à délivrer le logement, à en assurer la jouissance paisible et à effectuer les réparations qui lui incombent. Le locataire s'engage à payer le loyer et les charges convenus, user paisiblement des lieux, respecter leur destination, signaler rapidement les sinistres et répondre des dégradations qui lui sont imputables. Toute sous-location, cession, transformation des lieux ou activité incompatible avec la destination du logement doit faire l'objet d'un accord écrit préalable lorsque les textes applicables l'exigent. Les parties s'engagent à respecter les règles de sécurité, de voisinage et, le cas échéant, de copropriété.";
             const splitText = doc.splitTextToSize(textEngagement, pageW - margin * 2 - 6);
             doc.text(splitText, margin + 3, y);
             y += splitText.length * 6 + 8;
+            if (c.conditions) {
+                sectionHeader('VI. CONDITIONS PARTICULIÈRES');
+                const splitConditions = doc.splitTextToSize(c.conditions, pageW - margin * 2 - 6);
+                doc.text(splitConditions, margin + 3, y);
+                y += splitConditions.length * 6 + 8;
+            }
+            sectionHeader('VII. ÉTAT DES LIEUX ET FIN DU BAIL');
+            const textEtat = "Un état des lieux contradictoire d'entrée est annexé ou établi lors de la remise des clés. Un état des lieux de sortie sera réalisé à la restitution des lieux. Les parties conviennent de se référer au contrat signé et aux textes applicables pour le renouvellement, le préavis, la résiliation et la restitution du dépôt de garantie. Les éventuelles annexes comprennent notamment l'état des lieux, l'inventaire des clés et équipements, ainsi que les justificatifs convenus entre les parties.";
+            const splitEtat = doc.splitTextToSize(textEtat, pageW - margin * 2 - 6);
+            doc.text(splitEtat, margin + 3, y);
+            y += splitEtat.length * 6 + 8;
 
             const dateStr = c.dateSig
                 ? new Date(c.dateSig).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -2367,6 +2392,9 @@
                     adresse: contratData.adresse, lot: contratData.lot,
                     loyer: contratData.loyer || 0,
                     duree: contratData.duree, effet: contratData.effet,
+                    charges: contratData.charges || 0, echeance: contratData.echeance || '',
+                    modePaiement: contratData.modePaiement || '', preavis: contratData.preavis || '',
+                    conditions: contratData.conditions || '',
                     signatureBailleur: contratData.signatureBailleur,
                     signatureLocataire: sigLocataire,
                     dateSignature: dateValidation,
@@ -2720,8 +2748,13 @@
             const accessoires = document.getElementById('c-accessoires').value;
             const loyer = document.getElementById('c-loy-full').value;
             const caution = document.getElementById('c-cau-full').value;
+            const charges = document.getElementById('c-charges').value;
+            const echeance = document.getElementById('c-echeance').value;
+            const modePaiement = document.getElementById('c-mode-paiement').value;
             const duree = document.getElementById('c-duree').value;
             const effet = document.getElementById('c-effet').value;
+            const preavis = document.getElementById('c-preavis').value;
+            const conditions = document.getElementById('c-conditions').value;
             const lieuSig = document.getElementById('c-signature-lieu').value;
             const dateSig = document.getElementById('c-signature-date').value;
             const civilite = document.getElementById('c-loc-civilite').value;
@@ -2765,6 +2798,7 @@
             y = 68;
             
             function sectionHeader(title) {
+                if (y > 255) { doc.addPage(); y = 25; }
                 doc.setFillColor(30, 58, 138);
                 doc.rect(margin, y - 5, pageW - margin * 2, 8, 'F');
                 doc.setTextColor(255, 255, 255);
@@ -2814,12 +2848,29 @@
             y += 3;
             
             // IV - ENGAGEMENTS
-            sectionHeader('IV. ENGAGEMENTS');
+            sectionHeader('IV. CONDITIONS PRATIQUES');
+            if(charges) ligne('CHARGES MENSUELLES', `${parseInt(charges).toLocaleString('fr-FR')} FCFA`);
+            if(echeance) ligne('ÉCHÉANCE', echeance);
+            if(modePaiement) ligne('MODE DE PAIEMENT', modePaiement);
+            if(preavis) ligne('PRÉAVIS', preavis);
+            y += 3;
+            sectionHeader('V. ENGAGEMENTS DES PARTIES');
             doc.setFontSize(9.5);
-            const textEngagement = "Le locataire s'oblige à payer le loyer aux échéances convenues et à maintenir les lieux en bon état de réparations locatives conformément à la réglementation en vigueur.";
+            const textEngagement = "Le bailleur s'engage à délivrer le logement, à en assurer la jouissance paisible et à effectuer les réparations qui lui incombent. Le locataire s'engage à payer le loyer et les charges convenus, user paisiblement des lieux, respecter leur destination, signaler rapidement les sinistres et répondre des dégradations qui lui sont imputables. Toute sous-location, cession, transformation des lieux ou activité incompatible avec la destination du logement doit faire l'objet d'un accord écrit préalable lorsque les textes applicables l'exigent. Les parties s'engagent à respecter les règles de sécurité, de voisinage et, le cas échéant, de copropriété.";
             const splitText = doc.splitTextToSize(textEngagement, pageW - margin * 2 - 6);
             doc.text(splitText, margin + 3, y);
             y += splitText.length * 6 + 8;
+            if(conditions) {
+                sectionHeader('VI. CONDITIONS PARTICULIÈRES');
+                const splitConditions = doc.splitTextToSize(conditions, pageW - margin * 2 - 6);
+                doc.text(splitConditions, margin + 3, y);
+                y += splitConditions.length * 6 + 8;
+            }
+            sectionHeader('VII. ÉTAT DES LIEUX ET FIN DU BAIL');
+            const textEtat = "Un état des lieux contradictoire d'entrée est annexé ou établi lors de la remise des clés. Un état des lieux de sortie sera réalisé à la restitution des lieux. Les parties conviennent de se référer au contrat signé et aux textes applicables pour le renouvellement, le préavis, la résiliation et la restitution du dépôt de garantie. Les éventuelles annexes comprennent notamment l'état des lieux, l'inventaire des clés et équipements, ainsi que les justificatifs convenus entre les parties.";
+            const splitEtat = doc.splitTextToSize(textEtat, pageW - margin * 2 - 6);
+            doc.text(splitEtat, margin + 3, y);
+            y += splitEtat.length * 6 + 8;
             
             // Lieu & Date
             const dateStr = dateSig ? new Date(dateSig).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -2877,6 +2928,8 @@
                 bailleur: bailleur || utilisateurNom, bailleurEmail: utilisateurEmail,
                 adresse: adresse, lot: lot, loyer: parseInt(loyer || 0),
                 surface: surface, pieces: pieces, duree: duree, effet: effet,
+                charges: parseInt(charges || 0), echeance: echeance, modePaiement: modePaiement,
+                preavis: preavis, conditions: conditions,
                 civilite: civilite, naissance: naissance, nationalite: nationalite,
                 lieuSig: lieuSig, dateSig: dateSig,
                 signatureBailleur: sigData,
