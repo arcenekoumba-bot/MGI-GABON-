@@ -564,6 +564,12 @@
         body.dark-mode .modal-content { background:#162238 !important; color:#e5edf8 !important; }
         body.dark-mode .role-label { background:#0f1a2d !important; border-color:#344661 !important; color:#c7d5e8 !important; }
         body.dark-mode .role-label.selected, body.dark-mode .role-label:hover { background:#173b4a !important; border-color:#0ea5a4 !important; }
+        body.dark-mode #bai-msg-thread, body.dark-mode #loc-msg-thread { background:#0f1a2d !important; border:1px solid #293852; }
+        body.dark-mode .msg-bubble-bailleur > div { background:#174c68 !important; color:#f1f7ff !important; border:1px solid #256b8a; }
+        body.dark-mode .msg-bubble-locataire > div { background:#263957 !important; color:#f1f7ff !important; border:1px solid #405575; }
+        body.dark-mode .msg-time { color:#b8c7da !important; }
+        body.dark-mode .bai-tenant-btn { background:#162238 !important; color:#e5edf8 !important; border-color:#344661 !important; }
+        body.dark-mode .bai-tenant-btn:hover, body.dark-mode .bai-tenant-btn.selected { background:#173b4a !important; border-color:#0ea5a4 !important; }
         body.dark-mode a { color:#75e0d6; }
         #theme-toggle-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; margin-bottom:9px; padding:10px 12px; border:1px solid var(--border); border-radius:9px; background:transparent; color:var(--text); cursor:pointer; font-weight:600; touch-action:manipulation; }
         #theme-toggle-btn:hover { background:rgba(14,165,164,.12); }
@@ -647,6 +653,8 @@
             .stat-number { font-size: 20px; }
             .stat-label { font-size: 9px; }
             table { display: block; overflow-x: auto; white-space: nowrap; }
+            #bai-msg-thread, #loc-msg-thread { height: 300px; padding: 10px !important; }
+            .msg-bubble-bailleur > div, .msg-bubble-locataire > div { max-width: 90%; padding: 9px 11px; font-size: 14px; }
         }
     </style>
 </head>
