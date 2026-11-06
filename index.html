@@ -1300,6 +1300,10 @@
 
                         <!-- Vue Locataire -->
                         <div id="loc-msg-ui" style="display:none;">
+                            <div id="loc-msg-logement-bar" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+                                <label for="loc-msg-logement-select" style="display:block;margin:0 0 5px;font-size:12px;font-weight:700;color:#0369a1;">Logement concerné par la conversation</label>
+                                <select id="loc-msg-logement-select" onchange="changerLogementMessagerie(this.value)" style="width:100%;margin:0;padding:8px 10px;border-radius:6px;border:1px solid #93c5fd;font-size:13px;"></select>
+                            </div>
                             <div id="loc-msg-thread" style="background: #f1f5f9; padding: 15px; border-radius: 8px; height: 350px; overflow-y: auto; margin-bottom: 15px;"></div>
                             <div class="bai-msg-send-row">
                                 <textarea id="loc-msg-text" placeholder="Posez une question à votre bailleur..." rows="2"></textarea>
@@ -3182,15 +3186,26 @@
 
         // Une conversation doit être identique des deux côtés. Les anciens
         // messages restent lisibles grâce aux champs historiques nom/e-mail.
-        function cleConversation(bailleurEmail, locataireEmail, bailleurNom, locataireNom) {
-            const bailleur = normaliserTexte((bailleurEmail || bailleurNom || '').trim());
-            const locataire = normaliserTexte((locataireEmail || locataireNom || '').trim());
-            return 'mgi_' + encodeURIComponent(bailleur) + '__' + encodeURIComponent(locataire);
+        function cleLogement(adresse, lot) {
+            return normaliserTexte([adresse || '', lot || ''].filter(Boolean).join('|'));
         }
 
-        function messageDansConversation(m, bailleurEmail, locataireEmail, locataireNom) {
-            const id = cleConversation(bailleurEmail, locataireEmail, '', locataireNom);
+        function libelleLogement(adresse, lot) {
+            return [lot ? 'Lot ' + lot : '', adresse || ''].filter(Boolean).join(' — ');
+        }
+
+        function cleConversation(bailleurEmail, locataireEmail, bailleurNom, locataireNom, logementKey) {
+            const bailleur = normaliserTexte((bailleurEmail || bailleurNom || '').trim());
+            const locataire = normaliserTexte((locataireEmail || locataireNom || '').trim());
+            const logement = normaliserTexte(logementKey || '');
+            return 'mgi_' + encodeURIComponent(bailleur) + '__' + encodeURIComponent(locataire) + (logement ? '__logement_' + encodeURIComponent(logement) : '');
+        }
+
+        function messageDansConversation(m, bailleurEmail, locataireEmail, locataireNom, logementKey) {
+            const id = cleConversation(bailleurEmail, locataireEmail, '', locataireNom, logementKey);
             if(m.conversationId === id) return true;
+            // Les anciens messages sans logementKey restent visibles pour compatibilité.
+            if(logementKey && m.logementKey && normaliserTexte(m.logementKey) !== normaliserTexte(logementKey)) return false;
             // Compatibilité avec les messages enregistrés avant cette correction.
             const bailleurOk = !bailleurEmail || normaliserTexte(m.bailleurEmail || '') === normaliserTexte(bailleurEmail);
             const locataireOk = (locataireEmail && (
@@ -3201,9 +3216,29 @@
             return bailleurOk && locataireOk;
         }
 
-        function afficherMessagesDepuisCache(bailleurEmail, locataireEmail, locataireNom, targetId) {
+        function timestampEnMillisecondes(value) {
+            if(!value) return 0;
+            if(typeof value.toMillis === 'function') return value.toMillis();
+            if(typeof value.toDate === 'function') return value.toDate().getTime();
+            if(value instanceof Date) return value.getTime();
+            const n = Number(value);
+            if(!Number.isNaN(n) && n > 0) return n;
+            const d = new Date(value);
+            return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+        }
+
+        function valeurTimestampClient(m) { return m.timestampClient || m.timestamp || ''; }
+
+        async function marquerMessagesLus(msgs) {
+            const aLire = msgs.filter(m => m._docId && !m.lu && m.auteurEmail && normaliserTexte(m.auteurEmail) !== normaliserTexte(utilisateurEmail));
+            await Promise.all(aLire.slice(0, 50).map(m => db.collection('messages').doc(m._docId).update({
+                lu: true, luAt: firebase.firestore.FieldValue.serverTimestamp(), luAtClient: new Date().toISOString()
+            }).catch(err => console.warn('Impossible de marquer le message comme lu :', err))));
+        }
+
+        function afficherMessagesDepuisCache(bailleurEmail, locataireEmail, locataireNom, targetId, logementKey) {
             const msgs = db._getStore('messages').filter(m =>
-                messageDansConversation(m, bailleurEmail, locataireEmail, locataireNom)
+                messageDansConversation(m, bailleurEmail, locataireEmail, locataireNom, logementKey)
             );
             afficherThread(msgs, targetId);
         }
@@ -3217,9 +3252,9 @@
                 const convs = {};
                 snap.forEach(doc => {
                     const m = { _docId: doc.id, ...doc.data() };
-                    const cle = m.conversationId || cleConversation(utilisateurEmail, m.locataireEmail, utilisateurEmail, m.locataireNom);
+                    const cle = m.conversationId || cleConversation(utilisateurEmail, m.locataireEmail, utilisateurEmail, m.locataireNom, m.logementKey);
                     const nom = m.locataireNom || m.locataireEmail || 'Locataire';
-                    if(!convs[cle]) convs[cle] = { id: cle, nom, email: m.locataireEmail || '', msgs: [] };
+                    if(!convs[cle]) convs[cle] = { id: cle, nom, email: m.locataireEmail || '', adresse: m.logementAdresse || '', lot: m.logementLot || '', logementKey: m.logementKey || '', msgs: [] };
                     convs[cle].msgs.push(m);
                 });
                 if(Object.keys(convs).length === 0) {
@@ -3228,24 +3263,60 @@
                 Object.values(convs).forEach(c => {
                     const btn = document.createElement('button');
                     btn.className = 'bai-tenant-btn';
-                    btn.innerHTML = `<strong>${c.nom}</strong>${c.email ? '<br><span style="font-size:11px;color:#64748b;">' + c.email + '</span>' : ''}`;
+                    const logementLabel = libelleLogement(c.adresse, c.lot);
+                    btn.innerHTML = `<strong>${echapperHtmlMGI(c.nom)}</strong>${c.email ? '<br><span style="font-size:11px;color:#64748b;">' + echapperHtmlMGI(c.email) + '</span>' : ''}${logementLabel ? '<br><span style="font-size:11px;color:#0f766e;">🏠 ' + echapperHtmlMGI(logementLabel) + '</span>' : ''}`;
                     btn.onclick = () => {
                         currentTenantId = c.email || c.nom;
-                        window._conversationBailleurActive = { id: c.id, email: c.email, nom: c.nom };
-                        document.getElementById('bai-selected-tenant-name').innerText = c.nom + (c.email ? ' (' + c.email + ')' : '');
+                        window._conversationBailleurActive = { id: c.id, email: c.email, nom: c.nom, adresse: c.adresse, lot: c.lot, logementKey: c.logementKey };
+                        document.getElementById('bai-selected-tenant-name').innerText = c.nom + (c.email ? ' (' + c.email + ')' : '') + (logementLabel ? ' — ' + logementLabel : '');
                         document.getElementById('bai-selected-tenant-header').style.display = 'block';
-                        afficherMessagesDepuisCache(utilisateurEmail, c.email, c.nom, 'bai-msg-thread');
+                        afficherMessagesDepuisCache(utilisateurEmail, c.email, c.nom, 'bai-msg-thread', c.logementKey);
                     };
                     if(window._conversationBailleurActive && window._conversationBailleurActive.id === c.id) {
-                        afficherMessagesDepuisCache(utilisateurEmail, c.email, c.nom, 'bai-msg-thread');
+                        afficherMessagesDepuisCache(utilisateurEmail, c.email, c.nom, 'bai-msg-thread', c.logementKey);
                     }
                     list.appendChild(btn);
                 });
             });
         }
 
+        function initialiserLogementsMessagerieLocataire() {
+            const sel = document.getElementById('loc-msg-logement-select');
+            const bar = document.getElementById('loc-msg-logement-bar');
+            if(!sel || !bar) return;
+            const contrats = db._getStore('contrats').filter(c =>
+                (utilisateurEmail && normaliserTexte(c.locataireEmail || '') === normaliserTexte(utilisateurEmail)) ||
+                normaliserTexte(c.locataire || '') === normaliserTexte(utilisateurNom)
+            );
+            const uniques = [];
+            const vus = new Set();
+            contrats.forEach(c => {
+                const key = cleLogement(c.adresse, c.lot) || 'principal';
+                if(!vus.has(key)) { vus.add(key); uniques.push({ key, adresse: c.adresse || '', lot: c.lot || '', bailleurEmail: c.bailleurEmail || '', bailleur: c.bailleur || '' }); }
+            });
+            if(uniques.length === 0) { bar.style.display = 'none'; return; }
+            bar.style.display = 'block';
+            sel.innerHTML = uniques.map(c => `<option value="${echapperHtmlMGI(c.key)}">${echapperHtmlMGI(libelleLogement(c.adresse, c.lot) || 'Logement principal')}${c.bailleur ? ' — ' + echapperHtmlMGI(c.bailleur) : ''}</option>`).join('');
+            const precedent = window._logementMessagerieActif;
+            window._logementsMessagerie = uniques;
+            window._logementMessagerieActif = (precedent && uniques.some(c => c.key === precedent)) ? precedent : uniques[0].key;
+            sel.value = window._logementMessagerieActif;
+            const actif = uniques.find(c => c.key === window._logementMessagerieActif) || uniques[0];
+            window._logementMessagerieActifAdresse = actif.adresse;
+            window._logementMessagerieActifLot = actif.lot;
+        }
+
+        window.changerLogementMessagerie = function(key) {
+            window._logementMessagerieActif = key || '';
+            const actif = (window._logementsMessagerie || []).find(c => c.key === window._logementMessagerieActif);
+            window._logementMessagerieActifAdresse = actif ? actif.adresse : '';
+            window._logementMessagerieActifLot = actif ? actif.lot : '';
+            if(typeof window._rendreMessagesLocataire === 'function') window._rendreMessagesLocataire();
+        };
+
         function ecouterMessagesLocataire(nom) {
             if(_messagesLocataireUnsubscribe) _messagesLocataireUnsubscribe();
+            initialiserLogementsMessagerieLocataire();
             // L'e-mail est l'identifiant fiable du locataire. Une recherche par
             // nom pourrait mélanger les conversations de personnes homonymes.
             const parId = {};
@@ -3254,9 +3325,11 @@
                 if(!termineEmail) return;
                 const msgs = Object.values(parId);
                 const cible = window._contactBailleurActif || {};
-                const filtres = cible.email ? msgs.filter(m => messageDansConversation(m, cible.email, utilisateurEmail, nom)) : msgs;
+                const logementKey = window._logementMessagerieActif || '';
+                const filtres = cible.email ? msgs.filter(m => messageDansConversation(m, cible.email, utilisateurEmail, nom, logementKey)) : msgs.filter(m => !logementKey || !m.logementKey || m.logementKey === logementKey);
                 afficherThread(filtres, 'loc-msg-thread');
             };
+            window._rendreMessagesLocataire = rendre;
             const unsubEmail = db.collection("messages").where("locataireEmail", "==", utilisateurEmail).onSnapshot((snap) => {
                 snap.forEach(doc => parId[doc.id] = { _docId: doc.id, ...doc.data() });
                 termineEmail = true;
@@ -3277,21 +3350,24 @@
                 '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
             }[c]));
             const heureMessage = timestamp => {
-                const date = timestamp ? new Date(timestamp) : null;
+                const ms = timestampEnMillisecondes(timestamp);
+                const date = ms ? new Date(ms) : null;
                 if(!date || Number.isNaN(date.getTime())) return '';
                 return date.toLocaleString('fr-FR', {
                     day: '2-digit', month: '2-digit', year: 'numeric',
                     hour: '2-digit', minute: '2-digit'
                 });
             };
-            msgs.sort((a,b) => (a.timestamp || '').localeCompare(b.timestamp || '')).forEach(m => {
+            msgs.sort((a,b) => timestampEnMillisecondes(valeurTimestampClient(a)) - timestampEnMillisecondes(valeurTimestampClient(b))).forEach(m => {
                 const estAuteur = m.auteurEmail && utilisateurEmail
                     ? normaliserTexte(m.auteurEmail) === normaliserTexte(utilisateurEmail)
                     : m.auteur === utilisateurNom;
                 const side = estAuteur ? 'msg-bubble-bailleur' : 'msg-bubble-locataire';
-                thread.innerHTML += `<div class="${side}"><div>${echapper(m.texte)}<span class="msg-time">${heureMessage(m.timestamp)}</span></div></div>`;
+                const statut = estAuteur ? (m.lu ? 'Lu' : 'Envoyé') : '';
+                thread.innerHTML += `<div class="${side}"><div>${echapper(m.texte)}<span class="msg-time">${heureMessage(valeurTimestampClient(m))}${statut ? ' · ' + statut : ''}</span></div></div>`;
             });
             thread.scrollTop = thread.scrollHeight;
+            marquerMessagesLus(msgs);
         }
 
         window.envoyerMessageBailleur = async () => {
@@ -3305,8 +3381,11 @@
                 locataireNom: nomAffiche,
                 locataireEmail: locataireEmail,
                 bailleurEmail: utilisateurEmail,
-                conversationId: cleConversation(utilisateurEmail, locataireEmail, utilisateurNom, nomAffiche),
-                texte: txt, timestamp: new Date().toISOString(), destinataire: 'locataire'
+                logementAdresse: window._conversationBailleurActive?.adresse || '',
+                logementLot: window._conversationBailleurActive?.lot || '',
+                logementKey: window._conversationBailleurActive?.logementKey || '',
+                conversationId: cleConversation(utilisateurEmail, locataireEmail, utilisateurNom, nomAffiche, window._conversationBailleurActive?.logementKey || ''),
+                texte: txt, timestamp: firebase.firestore.FieldValue.serverTimestamp(), timestampClient: new Date().toISOString(), lu: false, destinataire: 'locataire'
             };
             try {
                 const ref = await db.collection("messages").add(nouveauMessage);
@@ -3331,11 +3410,17 @@
             if(!bailleurEmailLoc) {
                 const nomNormLoc = normaliserTexte(utilisateurNom);
                 const contrats = db._getStore('contrats');
-                const monContrat = contrats.find(c =>
+                const logements = contrats.filter(c =>
                     (utilisateurEmail && c.locataireEmail && normaliserTexte(c.locataireEmail) === normaliserTexte(utilisateurEmail)) ||
                     normaliserTexte(c.locataire) === nomNormLoc
                 );
+                const logementActif = window._logementMessagerieActif || '';
+                const monContrat = logements.find(c => cleLogement(c.adresse, c.lot) === logementActif) || logements[0];
                 bailleurEmailLoc = monContrat ? (monContrat.bailleurEmail || '') : '';
+                if(monContrat) {
+                    window._logementMessagerieActifAdresse = monContrat.adresse || '';
+                    window._logementMessagerieActifLot = monContrat.lot || '';
+                }
             }
             if(!bailleurEmailLoc) {
                 return alert("Votre contrat n'est pas encore relié à un compte bailleur. Demandez à votre bailleur de vérifier votre adresse e-mail.");
@@ -3344,8 +3429,11 @@
                 auteur: utilisateurNom, auteurEmail: utilisateurEmail,
                 locataireNom: utilisateurNom, locataireEmail: utilisateurEmail,
                 bailleurEmail: bailleurEmailLoc,
-                conversationId: cleConversation(bailleurEmailLoc, utilisateurEmail, '', utilisateurNom),
-                texte: txt, timestamp: new Date().toISOString(), destinataire: 'bailleur'
+                logementAdresse: window._logementMessagerieActifAdresse || '',
+                logementLot: window._logementMessagerieActifLot || '',
+                logementKey: window._logementMessagerieActif || '',
+                conversationId: cleConversation(bailleurEmailLoc, utilisateurEmail, '', utilisateurNom, window._logementMessagerieActif || ''),
+                texte: txt, timestamp: firebase.firestore.FieldValue.serverTimestamp(), timestampClient: new Date().toISOString(), lu: false, destinataire: 'bailleur'
             };
             try {
                 const ref = await db.collection("messages").add(nouveauMessage);
@@ -3900,14 +3988,14 @@
             const map = new Map();
             contrats.forEach(c => {
                 const key = (c.locataireEmail || c.locataire || '').trim().toLowerCase();
-                if(!map.has(key)) map.set(key, { nom: c.locataire, email: c.locataireEmail || '' });
+                if(!map.has(key)) map.set(key, { nom: c.locataire, email: c.locataireEmail || '', adresse: c.adresse || '', lot: c.lot || '', logementKey: cleLogement(c.adresse, c.lot) });
             });
             const locataires = [...map.values()];
             const valeurActuelle = sel.value;
             sel.innerHTML = '';
             sel.appendChild(new Option('-- Choisir un locataire --', ''));
             locataires.forEach(l => {
-                const val = JSON.stringify({ nom: l.nom, email: l.email });
+                const val = JSON.stringify({ nom: l.nom, email: l.email, adresse: l.adresse, lot: l.lot, logementKey: l.logementKey });
                 // Construire l'option via le DOM protège les apostrophes et
                 // caractères spéciaux contenus dans les noms.
                 sel.appendChild(new Option(l.nom + (l.email ? ' — ' + l.email : ''), val));
@@ -3918,19 +4006,19 @@
         window.ouvrirConvLocataire = function() {
             const sel = document.getElementById('bai-dest-select');
             if(!sel.value) return alert("Sélectionnez un locataire.");
-            let nom, email;
+            let nom, email, adresse = '', lot = '', logementKey = '';
             try {
                 const data = JSON.parse(sel.value);
-                nom = data.nom; email = data.email;
+                nom = data.nom; email = data.email; adresse = data.adresse || ''; lot = data.lot || ''; logementKey = data.logementKey || cleLogement(adresse, lot);
             } catch(e) {
                 nom = sel.value; email = '';
             }
             if(!nom) return alert("Sélectionnez un locataire.");
             currentTenantId = email || nom; // priorité email
             window._conversationBailleurActive = {
-                id: cleConversation(utilisateurEmail, email, utilisateurNom, nom),
+                id: cleConversation(utilisateurEmail, email, utilisateurNom, nom, logementKey),
                 email: email,
-                nom: nom
+                nom: nom, adresse: adresse, lot: lot, logementKey: logementKey
             };
             // Confirmation si email renseigné
             const confirmDiv = document.getElementById('bai-dest-confirm');
@@ -3938,11 +4026,11 @@
                 confirmDiv.style.display = email ? 'block' : 'none';
                 confirmDiv.innerText = email ? '✅ ' + nom + ' — ' + email : '';
             }
-            document.getElementById('bai-selected-tenant-name').innerText = nom + (email ? ' (' + email + ')' : '');
+            document.getElementById('bai-selected-tenant-name').innerText = nom + (email ? ' (' + email + ')' : '') + (libelleLogement(adresse, lot) ? ' — ' + libelleLogement(adresse, lot) : '');
             document.getElementById('bai-selected-tenant-header').style.display = 'block';
             // Charger messages filtrés par email ou nom
             const msgs = db._getStore('messages').filter(m =>
-                (email && m.locataireEmail === email) || (!email && m.locataireNom === nom)
+                ((email && m.locataireEmail === email) || (!email && m.locataireNom === nom)) && (!logementKey || !m.logementKey || m.logementKey === logementKey)
             );
             afficherThread(msgs, 'bai-msg-thread');
             document.querySelectorAll('.bai-tenant-btn').forEach(b => {
@@ -4132,9 +4220,9 @@
                 m.bailleurEmail === contactEmail
             );
             if(msgs.length === 0) return { texte: 'Aucun message', ts: '' };
-            msgs.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
+            msgs.sort((a,b) => timestampEnMillisecondes(valeurTimestampClient(b)) - timestampEnMillisecondes(valeurTimestampClient(a)));
             const m = msgs[0];
-            const d = m.timestamp ? new Date(m.timestamp).toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'}) : '';
+            const d = timestampEnMillisecondes(valeurTimestampClient(m)) ? new Date(timestampEnMillisecondes(valeurTimestampClient(m))).toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'}) : '';
             return { texte: (m.texte || '').substring(0, 35) + ((m.texte||'').length > 35 ? '…' : ''), ts: d };
         }
 

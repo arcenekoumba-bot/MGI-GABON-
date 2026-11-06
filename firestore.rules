@@ -33,12 +33,33 @@ service cloud.firestore {
         && request.resource.data.auteurEmail == myEmail()
         && (request.resource.data.bailleurEmail == myEmail()
           || request.resource.data.locataireEmail == myEmail());
-      allow update, delete: if signedIn() && resource.data.auteurEmail == myEmail();
+      // L'auteur peut gérer son message ; le destinataire peut uniquement
+      // modifier l'état de lecture et ses horodatages associés.
+      allow update: if signedIn() && (
+        resource.data.auteurEmail == myEmail() ||
+        (
+          canReadPair(resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lu', 'luAt', 'luAtClient'])
+        )
+      );
+      allow delete: if signedIn() && resource.data.auteurEmail == myEmail();
     }
 
     match /contrats/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      // Le locataire peut créer uniquement le contrat final correspondant
+      // au contrat en attente qu'il vient de signer.
+      allow create: if signedIn() && (
+        request.resource.data.bailleurEmail == myEmail() ||
+        (
+          request.resource.data.locataireEmail == myEmail() &&
+          request.resource.data.statut == 'valide' &&
+          request.resource.data.contratAttenteId is string &&
+          exists(/databases/$(database)/documents/contratsEnAttente/$(request.resource.data.contratAttenteId)) &&
+          get(/databases/$(database)/documents/contratsEnAttente/$(request.resource.data.contratAttenteId)).data.locataireEmail == myEmail() &&
+          get(/databases/$(database)/documents/contratsEnAttente/$(request.resource.data.contratAttenteId)).data.bailleurEmail == request.resource.data.bailleurEmail
+        )
+      );
       allow update: if canReadPair(resource.data);
       allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
     }
