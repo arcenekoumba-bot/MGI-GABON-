@@ -3230,10 +3230,28 @@
         function valeurTimestampClient(m) { return m.timestampClient || m.timestamp || ''; }
 
         async function marquerMessagesLus(msgs) {
-            const aLire = msgs.filter(m => m._docId && !m.lu && m.auteurEmail && normaliserTexte(m.auteurEmail) !== normaliserTexte(utilisateurEmail));
-            await Promise.all(aLire.slice(0, 50).map(m => db.collection('messages').doc(m._docId).update({
-                lu: true, luAt: firebase.firestore.FieldValue.serverTimestamp(), luAtClient: new Date().toISOString()
-            }).catch(err => console.warn('Impossible de marquer le message comme lu :', err))));
+            const aLire = msgs.filter(m => m._docId && !m.lu && m.auteurEmail &&
+                normaliserTexte(m.auteurEmail) !== normaliserTexte(utilisateurEmail) &&
+                ((m.locataireEmail && normaliserTexte(m.locataireEmail) === normaliserTexte(utilisateurEmail)) ||
+                 (m.bailleurEmail && normaliserTexte(m.bailleurEmail) === normaliserTexte(utilisateurEmail))));
+            await Promise.all(aLire.slice(0, 50).map(async m => {
+                const luAtClient = new Date().toISOString();
+                try {
+                    await db.collection('messages').doc(m._docId).update({
+                        lu: true,
+                        luAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        luAtClient: luAtClient
+                    });
+                    // Mise à jour immédiate du cache : l'état ne reste pas
+                    // bloqué sur « Envoyé » si le snapshot arrive plus tard.
+                    const cache = db._cache.messages || [];
+                    db._cache.messages = cache.map(c => String(c.id || c._docId) === String(m._docId)
+                        ? { ...c, lu: true, luAtClient: luAtClient }
+                        : c);
+                } catch(err) {
+                    console.warn('Impossible de marquer le message comme lu :', err);
+                }
+            }));
         }
 
         function afficherMessagesDepuisCache(bailleurEmail, locataireEmail, locataireNom, targetId, logementKey) {
@@ -3252,6 +3270,9 @@
                 const convs = {};
                 snap.forEach(doc => {
                     const m = { _docId: doc.id, ...doc.data() };
+                    db._cache.messages = db._cache.messages || [];
+                    db._cache.messages = db._cache.messages.filter(c => String(c.id || c._docId) !== String(doc.id));
+                    db._cache.messages.push({ ...m, id: doc.id });
                     const cle = m.conversationId || cleConversation(utilisateurEmail, m.locataireEmail, utilisateurEmail, m.locataireNom, m.logementKey);
                     const nom = m.locataireNom || m.locataireEmail || 'Locataire';
                     if(!convs[cle]) convs[cle] = { id: cle, nom, email: m.locataireEmail || '', adresse: m.logementAdresse || '', lot: m.logementLot || '', logementKey: m.logementKey || '', msgs: [] };
@@ -3331,7 +3352,11 @@
             };
             window._rendreMessagesLocataire = rendre;
             const unsubEmail = db.collection("messages").where("locataireEmail", "==", utilisateurEmail).onSnapshot((snap) => {
-                snap.forEach(doc => parId[doc.id] = { _docId: doc.id, ...doc.data() });
+                snap.docChanges().forEach(change => {
+                    if(change.type === 'removed') delete parId[change.doc.id];
+                    else parId[change.doc.id] = { _docId: change.doc.id, ...change.doc.data() };
+                });
+                db._cache.messages = Object.values(parId).map(m => ({ ...m, id: m._docId }));
                 termineEmail = true;
                 rendre();
             }, err => { console.error('Erreur écoute messages par e-mail :', err); termineEmail = true; rendre(); });
@@ -3399,7 +3424,7 @@
             document.getElementById('bai-msg-text').value = "";
             // Affiche le message envoyé immédiatement, sans attendre le prochain
             // événement Firestore (le côté locataire fait déjà de même).
-            afficherMessagesDepuisCache(utilisateurEmail, locataireEmail, nomAffiche, 'bai-msg-thread');
+            afficherMessagesDepuisCache(utilisateurEmail, locataireEmail, nomAffiche, 'bai-msg-thread', window._conversationBailleurActive?.logementKey || '');
         };
 
         window.envoyerMessageLocataire = async () => {
@@ -3444,7 +3469,7 @@
             }
             document.getElementById('loc-msg-text').value = "";
             if(window._contactBailleurActif) {
-                afficherMessagesDepuisCache(bailleurEmailLoc, utilisateurEmail, utilisateurNom, 'loc-msg-thread');
+                afficherMessagesDepuisCache(bailleurEmailLoc, utilisateurEmail, utilisateurNom, 'loc-msg-thread', window._logementMessagerieActif || '');
             }
         };
 
