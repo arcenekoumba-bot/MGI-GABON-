@@ -274,6 +274,18 @@
             border-radius: 10px; padding: 2px 7px;
             font-size: 11px; font-weight: 700; min-width: 20px; text-align: center;
         }
+        .mgi-message-alert {
+            position: fixed; top: 18px; right: 18px; z-index: 5000;
+            width: min(360px, calc(100vw - 36px)); padding: 14px 16px;
+            display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+            color: #fff; background: linear-gradient(135deg, #0f2b5c, #0da89e);
+            border-radius: 14px; box-shadow: 0 12px 30px rgba(15,43,92,.28);
+            animation: mgiAlertIn .25s ease-out; font-size: 14px;
+        }
+        .mgi-message-alert strong { display:block; margin-bottom:3px; }
+        .mgi-message-alert small { opacity:.9; line-height:1.35; }
+        @keyframes mgiAlertIn { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:translateY(0); } }
+        body.dark-mode .mgi-message-alert { box-shadow: 0 12px 30px rgba(0,0,0,.45); }
         .contact-time { font-size: 11px; color: #94a3b8; }
         .add-contact-form { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px; margin-top: 14px; }
 
@@ -1882,6 +1894,8 @@
           try {
             // Reinitialiser les listeners pour eviter les doublons si lancerDashboard est appele plusieurs fois
             db._listeners = {};
+            _mgiMessageNotificationReady = false;
+            _mgiMessagesVus.clear();
             roleActuel = role;
             utilisateurNom = nom;
             utilisateurEmail = email;
@@ -3183,6 +3197,48 @@
         let currentTenantId = null;
         let _messagesBailleurUnsubscribe = null;
         let _messagesLocataireUnsubscribe = null;
+        let _mgiMessageNotificationReady = false;
+        const _mgiMessagesVus = new Set();
+
+        function jouerAlerteMessage() {
+            // Les navigateurs mobiles bloquent l'audio automatique avant une
+            // première interaction de l'utilisateur avec l'application.
+            if(!window._mgiAudioAutorise) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if(!AudioCtx) return;
+                const ctx = window._mgiAudioContext || (window._mgiAudioContext = new AudioCtx());
+                if(ctx.state === 'suspended') ctx.resume();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine'; osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+                osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.23);
+            } catch(err) { console.debug('Alerte sonore indisponible :', err); }
+        }
+
+        function notifierNouveauMessage(m) {
+            const id = m._docId || m.id;
+            if(!id || _mgiMessagesVus.has(id)) return;
+            _mgiMessagesVus.add(id);
+            jouerAlerteMessage();
+            if(navigator.vibrate) navigator.vibrate([80, 40, 80]);
+            const nom = m.auteur || (roleActuel === 'locataire' ? 'Votre bailleur' : 'Votre locataire');
+            const logement = libelleLogement(m.logementAdresse, m.logementLot);
+            const alert = document.createElement('div');
+            alert.className = 'mgi-message-alert';
+            alert.setAttribute('role', 'status');
+            alert.innerHTML = `<span style="font-size:22px;line-height:1;">💬</span><span><strong>Nouveau message</strong><small>${echapperHtmlMGI(nom)}${logement ? ' — ' + echapperHtmlMGI(logement) : ''}<br>${echapperHtmlMGI(String(m.texte || '').slice(0, 90))}</small></span>`;
+            alert.onclick = () => { alert.remove(); showTab('box-messagerie', null); };
+            document.body.appendChild(alert);
+            setTimeout(() => { if(alert.parentNode) alert.remove(); }, 6500);
+        }
+
+        document.addEventListener('pointerdown', function() {
+            window._mgiAudioAutorise = true;
+        }, { once: true, passive: true });
 
         // Une conversation doit être identique des deux côtés. Les anciens
         // messages restent lisibles grâce aux champs historiques nom/e-mail.
@@ -3268,8 +3324,10 @@
                 if(!list) return;
                 list.innerHTML = "";
                 const convs = {};
+                const nouveauxRecus = [];
                 snap.forEach(doc => {
                     const m = { _docId: doc.id, ...doc.data() };
+                    if(_mgiMessageNotificationReady && !m.lu && m.auteurEmail && normaliserTexte(m.auteurEmail) !== normaliserTexte(utilisateurEmail)) nouveauxRecus.push(m);
                     db._cache.messages = db._cache.messages || [];
                     db._cache.messages = db._cache.messages.filter(c => String(c.id || c._docId) !== String(doc.id));
                     db._cache.messages.push({ ...m, id: doc.id });
@@ -3278,6 +3336,8 @@
                     if(!convs[cle]) convs[cle] = { id: cle, nom, email: m.locataireEmail || '', adresse: m.logementAdresse || '', lot: m.logementLot || '', logementKey: m.logementKey || '', msgs: [] };
                     convs[cle].msgs.push(m);
                 });
+                nouveauxRecus.forEach(notifierNouveauMessage);
+                if(!_mgiMessageNotificationReady) _mgiMessageNotificationReady = true;
                 if(Object.keys(convs).length === 0) {
                     list.innerHTML = '<p style="color:#94a3b8; font-size:13px; padding:10px;">Aucune conversation.</p>';
                 }
@@ -3352,11 +3412,18 @@
             };
             window._rendreMessagesLocataire = rendre;
             const unsubEmail = db.collection("messages").where("locataireEmail", "==", utilisateurEmail).onSnapshot((snap) => {
+                const nouveauxRecus = [];
                 snap.docChanges().forEach(change => {
                     if(change.type === 'removed') delete parId[change.doc.id];
-                    else parId[change.doc.id] = { _docId: change.doc.id, ...change.doc.data() };
+                    else {
+                        const message = { _docId: change.doc.id, ...change.doc.data() };
+                        if(_mgiMessageNotificationReady && change.type === 'added' && !message.lu && message.auteurEmail && normaliserTexte(message.auteurEmail) !== normaliserTexte(utilisateurEmail)) nouveauxRecus.push(message);
+                        parId[change.doc.id] = message;
+                    }
                 });
                 db._cache.messages = Object.values(parId).map(m => ({ ...m, id: m._docId }));
+                nouveauxRecus.forEach(notifierNouveauMessage);
+                if(!_mgiMessageNotificationReady) _mgiMessageNotificationReady = true;
                 termineEmail = true;
                 rendre();
             }, err => { console.error('Erreur écoute messages par e-mail :', err); termineEmail = true; rendre(); });
