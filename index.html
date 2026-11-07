@@ -1093,7 +1093,7 @@
                                 <div><label>Le</label><input type="date" id="c-signature-date"></div>
                             </div>
                             <label>Signature du Bailleur (Tactile ou Souris)</label>
-                            <canvas id="signature-pad" width="600" height="200" style="border:2px dashed #cbd5e1; width:100%; height:150px; border-radius:8px; background:#fff;"></canvas>
+                            <canvas id="signature-pad" width="900" height="300" style="border:2px dashed #cbd5e1; width:100%; height:180px; border-radius:8px; background:#fff; touch-action:none; display:block;"></canvas>
                             <button class="btn-danger" style="margin-top:5px;" onclick="effacerSignature()">Effacer Signature</button>
                         </div>
                         <p style="margin:12px 0 0;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:12px;">Ce document est un modèle généré par MGI. Faites-le relire et adapter par un professionnel du droit au Gabon avant toute utilisation définitive.</p>
@@ -2083,7 +2083,9 @@
                 echeance: echeance,
                 mode: document.getElementById('p-mode').value,
                 bailleurEmail: utilisateurEmail,
-                statut: "À Jour", dateEnregistrement: new Date().toISOString().split('T')[0]
+                statut: "À Jour", dateEnregistrement: new Date().toISOString().split('T')[0],
+                creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                modifieLe: firebase.firestore.FieldValue.serverTimestamp()
             });
             alert("Paiement enregistré !");
         };
@@ -2146,8 +2148,11 @@
             const clientX = event.touches ? event.touches[0].clientX : event.clientX;
             const clientY = event.touches ? event.touches[0].clientY : event.clientY;
             return {
-                x: clientX - rect.left,
-                y: clientY - rect.top
+                // Le canvas est redimensionné en CSS sur téléphone :
+                // convertir les coordonnées affichées vers ses pixels internes
+                // permet de signer sur toute la surface, pas seulement en haut.
+                x: (clientX - rect.left) * canvasDom.width / rect.width,
+                y: (clientY - rect.top) * canvasDom.height / rect.height
             };
         }
 
@@ -2184,6 +2189,9 @@
         }, {passive: false});
 
         canvas.addEventListener("touchend", () => drawing = false);
+        ctx_sig.strokeStyle = '#1e3a8a';
+        ctx_sig.lineWidth = 3;
+        ctx_sig.lineCap = 'round';
 
         window.effacerSignature = () => ctx_sig.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -2316,6 +2324,10 @@
             doc.setDrawColor(59, 130, 246);
             doc.setLineWidth(1);
             doc.line(margin, 59, pageW - margin, 59);
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Référence : ${c.reference || 'MGI-B-' + String(c.contratAttenteId || '').slice(-10)}`, pageW - margin, 66, { align: 'right' });
 
             y = 68;
 
@@ -2505,6 +2517,10 @@
                     signatureBailleur: contratData.signatureBailleur,
                     signatureLocataire: sigLocataire,
                     dateSignature: dateValidation,
+                    dateSignatureISO: new Date().toISOString(),
+                    reference: contratData.reference || ('MGI-B-' + docId.slice(-10)),
+                    creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                    modifieLe: firebase.firestore.FieldValue.serverTimestamp(),
                     contratAttenteId: docId,
                     statut: 'valide'
                 });
@@ -2517,7 +2533,8 @@
                     locataireNom: locataire, locataireEmail: locataireEmail,
                     bailleurEmail: bailleurEmail || contratData.bailleurEmail,
                     typeDoc: 'Contrat signé', nomFichier: 'Contrat validé par les deux parties',
-                    dateEnvoi: dateValidation, statut: '✅ Validé', timestamp: new Date().toISOString()
+                    dateEnvoi: dateValidation, statut: '✅ Validé', timestamp: new Date().toISOString(),
+                    creeLe: firebase.firestore.FieldValue.serverTimestamp()
                 });
 
                 const conf = document.getElementById('sig-cla-confirm-' + docId);
@@ -2544,12 +2561,14 @@
                 locataireEmail: utilisateurEmail,
                 signatureImage: sigDataUrl,
                 dateSig: dateSig,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                creeLe: firebase.firestore.FieldValue.serverTimestamp()
             });
             // Notifier dans les docs du locataire
             await db.collection("documentsLocataire").add({
                 locataire: utilisateurNom, locataireEmail: utilisateurEmail,
-                type: 'signature_locataire', dateEmission: dateSig, bailleurEmail: ''
+                type: 'signature_locataire', dateEmission: dateSig, bailleurEmail: '',
+                creeLe: firebase.firestore.FieldValue.serverTimestamp()
             });
             const conf = document.getElementById('loc-sig-confirm');
             if(conf) { conf.style.display='block'; conf.innerText='✅ Contrat signé le ' + dateSig + ' — Votre bailleur en sera informé.'; }
@@ -2656,7 +2675,9 @@
                 telephone: tel,
                 statut: "À Jour",
                 dateEnregistrement: date,
-                origine: 'mobile_money_locataire'
+                origine: 'mobile_money_locataire',
+                creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                modifieLe: firebase.firestore.FieldValue.serverTimestamp()
             });
 
             // 2) Notification claire pour le bailleur dans les docs reçus
@@ -2664,7 +2685,8 @@
                 locataireNom: utilisateurNom, locataireEmail: utilisateurEmail,
                 bailleurEmail: bailleurEmailLoc,
                 typeDoc: 'Paiement ' + mode, nomFichier: montant.toLocaleString('fr-FR') + ' FCFA via ' + tel,
-                dateEnvoi: dateLisible, statut: 'Paiement reçu', timestamp: new Date().toISOString()
+                dateEnvoi: dateLisible, statut: 'Paiement reçu', timestamp: new Date().toISOString(),
+                creeLe: firebase.firestore.FieldValue.serverTimestamp()
             });
 
             conf.style.display = 'block';
@@ -2715,10 +2737,13 @@
             
             // Date émission
             const dateEmission = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const referenceQuittance = 'MGI-Q-' + new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
             doc.setTextColor(100, 100, 100);
             doc.text(`Date d'émission : ${dateEmission}`, pageW - margin, 68, { align: 'right' });
+            doc.setFontSize(8);
+            doc.text(`Référence : ${referenceQuittance}`, margin, 68);
             
             // Texte intro
             doc.setTextColor(50, 50, 50);
@@ -2824,7 +2849,9 @@
                 locataire: nom, locataireEmail: locataireEmailQuittance,
                 montant: parseInt(montant), dateEmission: dateEmission,
                 mois: mois, adresse: adresse, bailleurEmail: utilisateurEmail,
-                contratId: contratIdQ, type: 'quittance'
+                contratId: contratIdQ, type: 'quittance', reference: referenceQuittance,
+                creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                modifieLe: firebase.firestore.FieldValue.serverTimestamp()
             };
             // Ne pas enregistrer le PDF base64 dans Firestore : la limite d'un
             // document Firestore est de 1 Mo. Le PDF sera régénéré au clic.
@@ -2835,7 +2862,8 @@
                     type: 'quittance', mois: mois,
                     montant: parseInt(montant), dateEmission: dateEmission,
                     bailleurEmail: utilisateurEmail,
-                    adresse: adresse, contratId: contratIdQ
+                    adresse: adresse, contratId: contratIdQ, reference: referenceQuittance,
+                    creeLe: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 alert("✅ Quittance enregistrée et disponible dans l'espace du locataire !");
             } catch(error) {
@@ -2874,6 +2902,7 @@
             if(!locEmailVerif) return alert("L'email du locataire est obligatoire : c'est ce qui permet au locataire de voir et signer son contrat en toute sécurité.");
             
             const { jsPDF } = window.jspdf;
+            const referenceContrat = 'MGI-B-' + new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
             const doc = new jsPDF({ unit: 'mm', format: 'a4' });
             const pageW = 210;
             const margin = 20;
@@ -2901,6 +2930,10 @@
             doc.setDrawColor(59, 130, 246);
             doc.setLineWidth(1);
             doc.line(margin, 59, pageW - margin, 59);
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Référence : ${referenceContrat}`, pageW - margin, 66, { align: 'right' });
             
             y = 68;
             
@@ -2999,7 +3032,8 @@
             // sa signature doit donc apparaître du côté GAUCHE (position Bailleur),
             // pas du côté droit (position Locataire).
             const sigData = canvas.toDataURL('image/png');
-            const isBlank = !sigData || sigData === 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+            const sigPixels = ctx_sig.getImageData(0, 0, canvas.width, canvas.height).data;
+            const isBlank = !sigPixels || !Array.from(sigPixels).some((v, i) => i % 4 === 3 && v > 0);
             if(!isBlank) {
                 doc.addImage(sigData, 'PNG', margin, y, 40, 20);
             }
@@ -3040,7 +3074,11 @@
                 civilite: civilite, naissance: naissance, nationalite: nationalite,
                 lieuSig: lieuSig, dateSig: dateSig,
                 signatureBailleur: sigData,
+                reference: referenceContrat,
                 dateSoumission: dateEmission,
+                dateSoumissionISO: new Date().toISOString(),
+                creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                modifieLe: firebase.firestore.FieldValue.serverTimestamp(),
                 statut: 'en_attente_locataire'
             });
 
@@ -3130,7 +3168,9 @@
                 photos: photos, statut: "Ouvert", archive: false,
                 logementAdresse: monContrat.adresse || '', logementLot: monContrat.lot || '',
                 dateSignalement: new Date().toLocaleDateString('fr-FR'),
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                creeLe: firebase.firestore.FieldValue.serverTimestamp(),
+                modifieLe: firebase.firestore.FieldValue.serverTimestamp()
             });
             alert("Incident signalé !");
             document.getElementById('i-desc').value = '';
@@ -3185,7 +3225,11 @@
         window.archiverIncidentLocataire = async function(id, archive) {
             if(!id) return alert('Signalement introuvable.');
             try {
-                await db.collection('incidents').doc(id).update({ archive: archive, dateArchivageLocataire: archive ? new Date().toLocaleDateString('fr-FR') : '' });
+                await db.collection('incidents').doc(id).update({
+                    archive: archive,
+                    dateArchivageLocataire: archive ? new Date().toLocaleDateString('fr-FR') : '',
+                    modifieLe: firebase.firestore.FieldValue.serverTimestamp()
+                });
                 alert(archive ? 'Signalement archivé.' : 'Signalement restauré.');
                 initialiserDashboardLocataire();
             } catch(error) { alert(error.message || 'Impossible de modifier l’archivage.'); }
