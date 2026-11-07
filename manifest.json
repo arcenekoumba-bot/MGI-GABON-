@@ -1,6 +1,8 @@
 {
   "name": "Ma Gestion Immo",
   "short_name": "MGI Gabon",
+  "id": "./",
+  "lang": "fr",
   "description": "Solutions immobilières modernes pour bailleurs et locataires au Gabon",
   "start_url": "./index.html",
   "scope": "./",
@@ -8,6 +10,9 @@
   "background_color": "#f8fafc",
   "theme_color": "#1e3a8a",
   "orientation": "portrait-primary",
+  "display_override": ["standalone", "minimal-ui"],
+  "prefer_related_applications": false,
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "icon-192.png",
