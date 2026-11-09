@@ -240,6 +240,17 @@
         .kpi-box.red { background: linear-gradient(135deg, #991b1b, #ef4444); }
         .kpi-value { font-size: 22px; font-weight: 800; }
         .kpi-label { font-size: 11px; opacity: 0.85; margin-top: 3px; }
+        .dashboard-quick-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:0 0 18px; }
+        .dashboard-quick-action { display:flex; align-items:center; gap:10px; min-height:66px; padding:12px 14px; border:1px solid var(--border); border-radius:14px; background:var(--white); color:var(--text); cursor:pointer; text-align:left; box-shadow:var(--shadow-card); transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease; touch-action:manipulation; }
+        .dashboard-quick-action:hover, .dashboard-quick-action:active { transform:translateY(-2px); border-color:var(--accent); box-shadow:0 10px 22px rgba(15,39,75,.1); }
+        .dashboard-quick-icon { display:flex; align-items:center; justify-content:center; width:36px; height:36px; flex:0 0 36px; border-radius:11px; background:#e7f8f7; font-size:19px; }
+        .dashboard-quick-action strong { display:block; font-size:13px; color:var(--primary); }
+        .dashboard-quick-action small { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.25; }
+        .dashboard-section-intro { margin:0 0 16px; color:var(--muted); font-size:13px; }
+        body.dark-mode .dashboard-quick-action { background:#162238; border-color:#293852; color:var(--text); }
+        body.dark-mode .dashboard-quick-action strong { color:#e5edf8; }
+        body.dark-mode .dashboard-quick-icon { background:#173b4a; }
+        @media (max-width: 700px) { .dashboard-quick-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; } .dashboard-quick-action { min-height:62px; padding:10px; } .dashboard-quick-action small { display:none; } }
 
         /* ── Contacts & Statuts ── */
         .contacts-grid { display: flex; flex-direction: column; gap: 10px; }
@@ -813,8 +824,20 @@
         var target = document.getElementById(tabId);
         if(target) target.style.display = 'block';
         document.querySelectorAll('.sidebar-link').forEach(function(b) { b.classList.remove('active-nav'); });
-        if(btn) btn.classList.add('active-nav');
-        if(window.innerWidth < 1024) toggleSidebar();
+        if(btn && btn.classList.contains('sidebar-link')) {
+            btn.classList.add('active-nav');
+        } else {
+            var matchingLink = Array.from(document.querySelectorAll('.sidebar-link')).find(function(link) {
+                return (link.getAttribute('onclick') || '').indexOf("'" + tabId + "'") !== -1;
+            });
+            if(matchingLink) matchingLink.classList.add('active-nav');
+        }
+        // Fermer uniquement une barre réellement ouverte. Les ouvertures depuis
+        // le chatbot ou un raccourci ne doivent pas afficher la barre par erreur.
+        if(window.innerWidth < 1024) {
+            var sidebar = document.getElementById('app-sidebar');
+            if(sidebar && sidebar.classList.contains('open')) toggleSidebar();
+        }
     }
 </script>
 
@@ -924,8 +947,15 @@
                 <!-- Section Suivi (Bailleur & Locataire) -->
                 <div id="box-suivi" class="dashboard-content active">
                     <div class="welcome-banner">
-                        <h2 style="margin:0;">Tableau de Bord</h2>
-                        <p style="margin:5px 0 0; opacity: 0.9;">Suivi en temps réel de votre situation locative.</p>
+                        <h2 style="margin:0;">📊 Tableau de Bord</h2>
+                        <p style="margin:5px 0 0; opacity: 0.9;">Pilotez votre parc immobilier en un coup d’œil.</p>
+                    </div>
+                    <p class="dashboard-section-intro">Accédez rapidement aux actions les plus utilisées.</p>
+                    <div class="dashboard-quick-grid" aria-label="Actions rapides du bailleur">
+                        <button class="dashboard-quick-action" onclick="showTab('box-multilogement', this)"><span class="dashboard-quick-icon">🏢</span><span><strong>Ajouter un logement</strong><small>Organiser votre parc</small></span></button>
+                        <button class="dashboard-quick-action" onclick="showTab('box-quittance', this)"><span class="dashboard-quick-icon">📄</span><span><strong>Générer une quittance</strong><small>Créer un justificatif</small></span></button>
+                        <button class="dashboard-quick-action" onclick="showTab('box-bail', this)"><span class="dashboard-quick-icon">📜</span><span><strong>Créer un contrat</strong><small>Envoyer au locataire</small></span></button>
+                        <button class="dashboard-quick-action" onclick="showTab('box-messagerie', this)"><span class="dashboard-quick-icon">💬</span><span><strong>Ouvrir la messagerie</strong><small>Répondre aux locataires</small></span></button>
                     </div>
 
                     <div id="admin-paiement" class="card" style="display:none;">
@@ -1379,7 +1409,14 @@
                 <div id="box-loc-dashboard" class="dashboard-content">
                     <div class="welcome-banner">
                         <h2 style="margin:0;" id="loc-dash-bonjour">🏠 Mon Tableau de Bord</h2>
-                        <p style="margin:5px 0 0; opacity:0.9;" id="loc-dash-adresse"></p>
+                        <p style="margin:5px 0 0; opacity:0.9;" id="loc-dash-adresse">Votre situation locative en un coup d’œil.</p>
+                    </div>
+                    <p class="dashboard-section-intro">Retrouvez les actions essentielles de votre logement.</p>
+                    <div class="dashboard-quick-grid" aria-label="Actions rapides du locataire">
+                        <button class="dashboard-quick-action" onclick="showTab('box-loc-paiement', this)"><span class="dashboard-quick-icon">💳</span><span><strong>Payer mon loyer</strong><small>Effectuer un paiement</small></span></button>
+                        <button class="dashboard-quick-action" onclick="showTab('box-signalement-incident', this)"><span class="dashboard-quick-icon">⚠️</span><span><strong>Signaler un incident</strong><small>Prévenir mon bailleur</small></span></button>
+                        <button class="dashboard-quick-action" onclick="showTab('box-loc-documents', this)"><span class="dashboard-quick-icon">📂</span><span><strong>Mes documents</strong><small>Contrats et quittances</small></span></button>
+                        <button class="dashboard-quick-action" onclick="showTab('box-messagerie', this)"><span class="dashboard-quick-icon">💬</span><span><strong>Contacter mon bailleur</strong><small>Ouvrir la conversation</small></span></button>
                     </div>
 
                     <!-- Sélecteur de logement (visible uniquement si plusieurs baux) -->
