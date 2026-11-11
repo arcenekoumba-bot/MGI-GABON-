@@ -306,6 +306,43 @@
         }
         body.dark-mode .main-content { background:linear-gradient(180deg,#07182b 0%,#0b1220 60%); }
         body.dark-mode .dashboard-quick-action,.dark-mode .card,.dark-mode .analytics-card { box-shadow:0 6px 20px rgba(0,0,0,.28); }
+        /* ===== Écrans internes : cartes, formulaires et statuts ===== */
+        #box-quittance > .card, #box-bail > .card, #box-incident-admin > .card, #box-multilogement > .card { padding:24px; }
+        #box-quittance .sub-section-title, #box-bail .sub-section-title, #box-incident-admin .sub-section-title, #box-multilogement .sub-section-title { margin:0 0 18px; }
+        #box-quittance .form-grid { gap:16px; }
+        #box-quittance .full-width, #box-bail .full-width { min-width:0; }
+        #box-quittance canvas, #box-bail canvas { border:1.5px dashed #a8c4cf !important; border-radius:18px !important; background:#f7fbfb !important; }
+        #box-quittance .btn-success, #box-bail > .card > .btn-main { min-height:52px; border-radius:18px; font-weight:800; }
+        #box-bail .section-bail { padding:20px; border:1px solid #e3ebef; border-radius:22px; background:#fbfdfd; box-shadow:0 6px 20px rgba(8,35,63,.05); }
+        #box-bail .section-title { display:inline-flex; align-items:center; min-height:30px; padding:6px 12px; border-radius:999px; background:#ddf4f1; color:#0b7f79; font-size:11px; letter-spacing:.03em; }
+        #box-bail > .card > p[style*="background:#fffbeb"] { border:0 !important; border-radius:16px !important; background:#fff1d6 !important; color:#8a5a00 !important; }
+        #box-multilogement > .card > div[style*="background:#f0f9ff"] { padding:20px !important; border:1px solid #b9ece7 !important; border-radius:22px !important; background:#eefcfb !important; box-shadow:0 6px 20px rgba(8,35,63,.05); }
+        #box-multilogement > .card > div[style*="background:#f0f9ff"] h4 { color:#0b7f79 !important; font-size:16px; }
+        #box-multilogement > .card > div:first-child button { border-radius:999px !important; background:#ddf4f1 !important; color:#0b7f79 !important; }
+        .immeuble-card { padding:20px; margin-bottom:14px; border:1px solid #e3ebef; border-radius:22px; background:#fff; box-shadow:0 6px 20px rgba(8,35,63,.07); }
+        .immeuble-card:hover { border-color:#8bd9d3; background:#fbfefe; transform:translateY(-1px); }
+        .immeuble-title { color:#0f3b66; font-size:17px; }
+        .immeuble-badge { background:#e3ecfb; color:#3b6fe0; border-radius:999px; padding:5px 11px; }
+        .logement-row { padding:13px 14px; border:1px solid #e3ebef; border-radius:16px; background:#f8fbfb; }
+        .incident-card { padding:18px; margin-bottom:12px; border:1px solid #e3ebef; border-radius:22px; background:#fff; box-shadow:0 6px 20px rgba(8,35,63,.07); }
+        .incident-card:hover { border-color:#8bd9d3; }
+        .incident-filter-bar { gap:7px; padding:5px; border-radius:18px; background:#f3f7f8; }
+        .filter-chip { min-height:38px; padding:7px 13px; border:0; border-radius:999px; background:transparent; color:#5a6e81; }
+        .filter-chip.active { background:#0b7f79; color:#fff; box-shadow:0 5px 12px rgba(11,127,121,.18); }
+        #box-incident-admin [id^="i-count-"] { display:inline-flex; align-items:center; min-height:27px; border-radius:999px !important; padding:4px 10px !important; }
+        body.dark-mode #box-bail .section-bail, body.dark-mode #box-multilogement > .card > div[style*="background:#f0f9ff"], body.dark-mode .immeuble-card, body.dark-mode .incident-card { background:#0f2740 !important; border-color:#293852 !important; }
+        body.dark-mode #box-bail .section-title { background:rgba(79,216,207,.14); color:#4fd8cf; }
+        body.dark-mode #box-quittance canvas, body.dark-mode #box-bail canvas { background:#14314f !important; border-color:#55758c !important; }
+        body.dark-mode .logement-row { background:#14314f; border-color:#293852; }
+        body.dark-mode .incident-filter-bar { background:#0f2740; }
+        body.dark-mode .filter-chip { color:#9fb3c5; }
+        @media (max-width:700px) {
+            #box-quittance > .card, #box-bail > .card, #box-incident-admin > .card, #box-multilogement > .card { padding:18px; border-radius:24px; }
+            #box-bail .section-bail { padding:16px; border-radius:19px; }
+            #box-incident-admin [id^="i-count-"] { margin-bottom:4px; }
+            .incident-filter-bar { overflow-x:auto; flex-wrap:nowrap; padding:5px; }
+            .filter-chip { flex:0 0 auto; }
+        }
 
         /* ── Contacts & Statuts ── */
         .contacts-grid { display: flex; flex-direction: column; gap: 10px; }
