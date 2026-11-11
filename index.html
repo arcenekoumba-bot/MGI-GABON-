@@ -262,6 +262,11 @@
         @media (max-width: 1023px) {
             .mobile-bottom-nav { position:fixed; display:flex; left:10px; right:10px; bottom:10px; z-index:1200; padding:5px 4px; background:rgba(255,255,255,.96); border:1px solid rgba(229,234,242,.95); border-radius:18px; box-shadow:0 12px 35px rgba(15,39,75,.16); backdrop-filter:blur(14px); }
             .main-content { padding-bottom:96px; }
+            /* Le chatbot reste au-dessus de la barre basse, sans masquer ses boutons. */
+            #mgi-chatbot-btn { bottom:82px !important; right:16px !important; width:54px !important; height:54px !important; border-radius:17px !important; }
+            #mgi-chatbot-panel { bottom:146px !important; right:12px !important; max-height:calc(100vh - 190px) !important; }
+            /* Quand le menu latéral est ouvert, le footer et Déconnexion passent devant. */
+            .sidebar.open ~ .mobile-bottom-nav, .sidebar.open ~ .main-content ~ #mgi-chatbot-btn, .sidebar.open ~ .main-content ~ #mgi-chatbot-panel { display:none !important; }
         }
 
         /* ── Contacts & Statuts ── */
