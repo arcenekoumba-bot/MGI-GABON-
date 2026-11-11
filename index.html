@@ -251,6 +251,18 @@
         body.dark-mode .dashboard-quick-action strong { color:#e5edf8; }
         body.dark-mode .dashboard-quick-icon { background:#173b4a; }
         @media (max-width: 700px) { .dashboard-quick-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; } .dashboard-quick-action { min-height:62px; padding:10px; } .dashboard-quick-action small { display:none; } }
+        .mobile-bottom-nav { display:none; }
+        .mobile-bottom-link { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:0; flex:1; min-height:58px; padding:7px 4px; border:0; background:transparent; color:#8190a6; font-size:10px; font-weight:700; cursor:pointer; touch-action:manipulation; }
+        .mobile-bottom-link span:first-child { font-size:19px; line-height:1; }
+        .mobile-bottom-link.active-mobile { color:#0b8f8c; }
+        .mobile-bottom-link.active-mobile span:first-child { transform:translateY(-1px); }
+        body.dark-mode .mobile-bottom-nav { background:#111c30; border-color:#293852; }
+        body.dark-mode .mobile-bottom-link { color:#91a2bb; }
+        body.dark-mode .mobile-bottom-link.active-mobile { color:#75e0d6; }
+        @media (max-width: 1023px) {
+            .mobile-bottom-nav { position:fixed; display:flex; left:10px; right:10px; bottom:10px; z-index:1200; padding:5px 4px; background:rgba(255,255,255,.96); border:1px solid rgba(229,234,242,.95); border-radius:18px; box-shadow:0 12px 35px rgba(15,39,75,.16); backdrop-filter:blur(14px); }
+            .main-content { padding-bottom:96px; }
+        }
 
         /* ── Contacts & Statuts ── */
         .contacts-grid { display: flex; flex-direction: column; gap: 10px; }
@@ -824,6 +836,7 @@
         var target = document.getElementById(tabId);
         if(target) target.style.display = 'block';
         document.querySelectorAll('.sidebar-link').forEach(function(b) { b.classList.remove('active-nav'); });
+        document.querySelectorAll('.mobile-bottom-link').forEach(function(b) { b.classList.toggle('active-mobile', b.getAttribute('data-mobile-tab') === tabId); });
         if(btn && btn.classList.contains('sidebar-link')) {
             btn.classList.add('active-nav');
         } else {
@@ -838,6 +851,26 @@
             var sidebar = document.getElementById('app-sidebar');
             if(sidebar && sidebar.classList.contains('open')) toggleSidebar();
         }
+    }
+
+    function configurerNavigationMobile(role) {
+        var nav = document.getElementById('mobile-bottom-nav');
+        if(!nav) return;
+        var items = role === 'locataire' ? [
+            ['box-loc-dashboard','⌂','Accueil'],
+            ['box-suivi','€','Paiements'],
+            ['box-messagerie','💬','Messages'],
+            ['box-loc-documents','📂','Documents']
+        ] : [
+            ['box-suivi','⌂','Accueil'],
+            ['box-multilogement','🏢','Logements'],
+            ['box-messagerie','💬','Messages'],
+            ['box-quittance','＋','Actions']
+        ];
+        nav.innerHTML = items.map(function(item) {
+            return '<button class="mobile-bottom-link" data-mobile-tab="' + item[0] + '" onclick="showTab(\'' + item[0] + '\', this)"><span>' + item[1] + '</span><span>' + item[2] + '</span></button>';
+        }).join('');
+        nav.querySelector('.mobile-bottom-link').classList.add('active-mobile');
     }
 </script>
 
@@ -939,6 +972,14 @@
                 <button class="btn-danger" style="width: 100%;" onclick="seDeconnecter()">Déconnexion</button>
             </div>
         </aside>
+
+        <!-- Navigation mobile : accès rapide aux quatre espaces essentiels -->
+        <nav id="mobile-bottom-nav" class="mobile-bottom-nav" aria-label="Navigation rapide">
+            <button class="mobile-bottom-link active-mobile" data-mobile-tab="box-suivi" onclick="showTab('box-suivi', this)"><span>⌂</span><span>Accueil</span></button>
+            <button class="mobile-bottom-link" data-mobile-tab="box-multilogement" onclick="showTab('box-multilogement', this)"><span>🏢</span><span>Logements</span></button>
+            <button class="mobile-bottom-link" data-mobile-tab="box-messagerie" onclick="showTab('box-messagerie', this)"><span>💬</span><span>Messages</span></button>
+            <button class="mobile-bottom-link" data-mobile-tab="box-quittance" onclick="showTab('box-quittance', this)"><span>＋</span><span>Actions</span></button>
+        </nav>
 
         <!-- Contenu Principal -->
         <main class="main-content">
@@ -1942,6 +1983,7 @@
             roleActuel = role;
             utilisateurNom = nom;
             utilisateurEmail = email;
+            configurerNavigationMobile(role);
             document.getElementById('txt-welcome').innerText = nom || 'Bienvenue';
             document.getElementById('txt-info').innerText = email;
             afficherMenuToggle(true);
