@@ -1,6 +1,6 @@
 // Service Worker minimal pour MGI Gabon
 // Permet à l'app d'être "installable" et de démarrer même en cas de coupure réseau brève.
-const CACHE_NAME = 'mgi-gabon-v9';
+const CACHE_NAME = 'mgi-gabon-v10';
 const CORE_ASSETS = [
   './index.html',
   './manifest.json',

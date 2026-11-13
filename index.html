@@ -391,6 +391,46 @@
         body.dark-mode .mgi-message-alert { box-shadow: 0 12px 30px rgba(0,0,0,.45); }
         .contact-time { font-size: 11px; color: #94a3b8; }
         .add-contact-form { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px; margin-top: 14px; }
+        /* ===== Messagerie MGI : expérience type WhatsApp ===== */
+        #box-contacts .card, #box-messagerie .card { border-radius:26px; }
+        .contacts-grid { gap:8px; }
+        .contact-card { width:100%; padding:13px 14px; border:1px solid #e3ebef; border-radius:19px; background:#fff; box-shadow:0 5px 16px rgba(8,35,63,.05); text-align:left; font:inherit; cursor:pointer; }
+        .contact-card:hover, .contact-card:active { background:#f3fbfa; border-color:#8bd9d3; transform:translateY(-1px); }
+        .contact-avatar { width:48px; height:48px; font-size:17px; }
+        .contact-name { color:#0f3b66; font-weight:800; }
+        .contact-role { color:#5a6e81; }
+        .contact-last-msg { color:#7b8c9c; }
+        .bai-tenant-list-panel { padding:13px; border:1px solid #e3ebef; border-radius:22px; background:#f3f7f8; }
+        .bai-tenant-list-panel h4 { letter-spacing:.08em; font-size:11px !important; text-transform:uppercase; color:#5a6e81 !important; }
+        .bai-tenant-btn { min-height:62px; padding:11px 13px; border:1px solid #e3ebef; border-radius:17px; background:#fff; box-shadow:0 4px 12px rgba(8,35,63,.04); }
+        .bai-tenant-btn:hover, .bai-tenant-btn.selected { background:#ddf4f1; border-color:#65cfc7; }
+        .bai-thread-panel { min-width:0; }
+        #bai-selected-tenant-header { padding:13px 16px; border-radius:19px; margin-bottom:10px; background:linear-gradient(135deg,#0f3b66,#0e9189); box-shadow:0 8px 20px rgba(8,35,63,.12); }
+        #bai-msg-thread, #loc-msg-thread { background:#eaf3f3 !important; border:1px solid #d7e8e8; border-radius:22px !important; padding:16px !important; }
+        .msg-bubble-bailleur, .msg-bubble-locataire { margin-bottom:9px; }
+        .msg-bubble-bailleur > div { background:#d7f4ef; border:1px solid #b9e8e2; border-radius:17px 17px 5px 17px; box-shadow:0 2px 5px rgba(8,35,63,.05); }
+        .msg-bubble-locataire > div { background:#fff; border:1px solid #e3ebef; border-radius:17px 17px 17px 5px; box-shadow:0 2px 5px rgba(8,35,63,.05); }
+        .msg-time { color:#708697; font-size:10px; }
+        .bai-msg-send-row { align-items:end; padding:7px; border:1px solid #d7e8e8; border-radius:21px; background:#fff; box-shadow:0 6px 18px rgba(8,35,63,.06); }
+        .bai-msg-send-row textarea { min-height:44px; padding:12px 14px; border:0; border-radius:16px; background:#f3f7f8; }
+        .bai-msg-send-row textarea:focus { box-shadow:none; background:#eefcfb; }
+        .bai-msg-send-row .btn-main { min-height:44px; border-radius:16px; }
+        #bai-new-conv-bar, #loc-msg-logement-bar { padding:13px 15px !important; border:1px solid #b9e8e2 !important; border-radius:20px !important; background:#eefcfb !important; }
+        #bai-new-conv-bar span, #loc-msg-logement-bar label { color:#0b7f79 !important; }
+        #bai-new-conv-bar select, #loc-msg-logement-select { border-color:#a8dcd7 !important; border-radius:14px !important; background:#fff; }
+        body.dark-mode .contact-card, body.dark-mode .bai-tenant-btn, body.dark-mode .msg-bubble-locataire > div, body.dark-mode .bai-msg-send-row { background:#0f2740 !important; border-color:#293852 !important; }
+        body.dark-mode .contact-card:hover, body.dark-mode .contact-card:active, body.dark-mode .bai-tenant-btn:hover, body.dark-mode .bai-tenant-btn.selected { background:#173b4a !important; border-color:#2e8f91 !important; }
+        body.dark-mode #bai-msg-thread, body.dark-mode #loc-msg-thread { background:#0b1c2e !important; border-color:#293852 !important; }
+        body.dark-mode .msg-bubble-bailleur > div { background:#174c68 !important; border-color:#256b8a !important; }
+        body.dark-mode .bai-msg-send-row textarea { background:#14314f; color:#eaf2f8; }
+        @media (max-width:700px) {
+            .bai-msg-layout { display:flex; flex-direction:column; gap:10px; }
+            .bai-tenant-list-panel { max-height:190px; overflow-y:auto; }
+            .bai-thread-panel { min-height:0; }
+            #bai-msg-thread, #loc-msg-thread { height:clamp(250px,46vh,390px) !important; }
+            .bai-msg-send-row { grid-template-columns:1fr auto; gap:6px; }
+            .bai-msg-send-row .btn-main { padding:0 14px !important; }
+        }
 
         .bai-tenant-list-panel {
             background: #f8fafc;
@@ -4551,7 +4591,7 @@
                 const dernMsg = dernierMessage(c.email, c.nom);
                 const badgeHtml = nonLus > 0 ? `<span class="badge-unread">${nonLus}</span>` : '';
                 const timeHtml = dernMsg.ts ? `<span class="contact-time">${dernMsg.ts}</span>` : '';
-                return `<div class="contact-card" onclick="ouvrirConvDepuisContact('${c.email}','${c.nom.replace(/'/g,"\\'")}','${c.role}')">
+                return `<button type="button" class="contact-card" onclick='ouvrirConvDepuisContact(${JSON.stringify(c.email)},${JSON.stringify(c.nom)},${JSON.stringify(c.role)})'>
                     <div class="contact-avatar ${avClass}">
                         ${initiale}
                         <span class="status-dot ${online ? 'online' : 'offline'}"></span>
@@ -4565,7 +4605,7 @@
                         ${timeHtml}
                         ${badgeHtml}
                     </div>
-                </div>`;
+                </button>`;
             }).join('');
 
             // Mettre à jour les badges dans le menu
@@ -4586,30 +4626,36 @@
                 setTimeout(() => {
                     // Trouver l'option correspondante dans bai-dest-select
                     const sel = document.getElementById('bai-dest-select');
+                    let optionTrouvee = false;
                     if(sel) {
                         for(let opt of sel.options) {
-                            try { const d = JSON.parse(opt.value); if(d.email === email || d.nom === nom) { sel.value = opt.value; break; } } catch(e) {}
+                            try { const d = JSON.parse(opt.value); if(d.email === email || d.nom === nom) { sel.value = opt.value; optionTrouvee = true; break; } } catch(e) {}
                         }
                     }
-                    document.getElementById('bai-selected-tenant-name').innerText = nom + (email ? ' (' + email + ')' : '');
-                    document.getElementById('bai-selected-tenant-header').style.display = 'block';
-                    const msgs = db._getStore('messages').filter(m =>
-                        (email && m.locataireEmail === email) || (!email && m.locataireNom === nom)
-                    );
-                    afficherThread(msgs, 'bai-msg-thread');
+                    if(optionTrouvee && typeof window.ouvrirConvLocataire === 'function') {
+                        // Réutilise le même filtre logement que le sélecteur normal.
+                        window.ouvrirConvLocataire();
+                    } else {
+                        document.getElementById('bai-selected-tenant-name').innerText = nom + (email ? ' (' + email + ')' : '');
+                        document.getElementById('bai-selected-tenant-header').style.display = 'block';
+                        const msgs = db._getStore('messages').filter(m =>
+                            (email && m.locataireEmail === email) || (!email && m.locataireNom === nom)
+                        );
+                        afficherThread(msgs, 'bai-msg-thread');
+                    }
                 }, 100);
             } else {
                 // Si locataire : ouvrir la messagerie avec ce bailleur
                 window._contactBailleurActif = { email, nom };
+                window._bailleurEmailCible = email || '';
                 showTab('box-messagerie', document.querySelector('[onclick*="box-messagerie"]'));
                 setTimeout(() => {
                     document.getElementById('loc-msg-thread').innerHTML = '';
+                    const logementKeyActif = window._logementMessagerieActif || '';
                     const msgs = db._getStore('messages').filter(m =>
-                        messageDansConversation(m, email, utilisateurEmail, utilisateurNom, utilisateurNom)
+                        messageDansConversation(m, email, utilisateurEmail, utilisateurNom, logementKeyActif)
                     );
                     afficherThread(msgs, 'loc-msg-thread');
-                    // Mettre à jour l'envoi pour cibler ce bailleur
-                    window._bailleurEmailCible = email;
                 }, 100);
             }
             afficherContacts(); // rafraîchir les badges
