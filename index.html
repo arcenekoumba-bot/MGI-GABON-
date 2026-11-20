@@ -291,6 +291,33 @@
         .payment-dashboard .health-bar-fill { background:#f5b544; }
         .payment-dashboard .health-percentage { color:#fff; }
         .payment-dashboard > p { color:rgba(255,255,255,.85) !important; }
+        /* La carte financière garde un contraste lisible dans les deux thèmes. */
+        body:not(.dark-mode) #parc-sante-block {
+            background:linear-gradient(135deg,#f0f9ff 0%,#f5f3ff 100%) !important;
+            border:1px solid #d6e2f0 !important;
+            color:#102a56 !important;
+            box-shadow:0 8px 24px rgba(16,42,86,.08);
+        }
+        body:not(.dark-mode) #parc-sante-block h3,
+        body:not(.dark-mode) #parc-sante-block .health-percentage,
+        body:not(.dark-mode) #parc-sante-block .stat-number {
+            color:#102a56 !important;
+        }
+        body:not(.dark-mode) #parc-sante-block .stat-label,
+        body:not(.dark-mode) #parc-sante-block > p {
+            color:#475569 !important;
+        }
+        body:not(.dark-mode) #parc-sante-block .stat-card {
+            background:#fff !important;
+            border:1px solid #d8e3ee !important;
+            box-shadow:0 2px 8px rgba(15,39,75,.08) !important;
+            color:#102a56 !important;
+        }
+        body:not(.dark-mode) #parc-sante-block .stat-card.good .stat-number { color:#047857 !important; }
+        body:not(.dark-mode) #parc-sante-block .stat-card.warning .stat-number { color:#b45309 !important; }
+        body:not(.dark-mode) #parc-sante-block .stat-card.danger .stat-number { color:#b91c1c !important; }
+        body:not(.dark-mode) #parc-sante-block .health-bar { background:#dbe5ef; }
+        body:not(.dark-mode) #parc-sante-block .health-bar-fill { background:#f5b544; }
         .dashboard-quick-grid { gap:10px; }
         .dashboard-quick-action { min-height:76px; border:0; border-radius:22px; box-shadow:0 6px 20px rgba(8,35,63,.07); font-family:inherit; }
         .dashboard-quick-icon { width:48px; height:48px; flex-basis:48px; border-radius:17px; }
