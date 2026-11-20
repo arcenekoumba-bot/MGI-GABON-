@@ -3,141 +3,304 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.token.email_verified == true;
     }
 
     function myEmail() {
       return request.auth.token.email;
     }
 
-    function isEmail(value) {
-      return signedIn() && value == myEmail();
+    function myUid() {
+      return request.auth.uid;
     }
 
     function canReadPair(data) {
       return signedIn() && (
-        data.bailleurEmail == myEmail() ||
-        data.locataireEmail == myEmail() ||
-        data.email == myEmail() ||
-        data.auteurEmail == myEmail()
+        data.get('bailleurEmail', '') == myEmail()
+        || data.get('locataireEmail', '') == myEmail()
       );
     }
 
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function participantsUnchanged() {
+      return request.resource.data.get('bailleurEmail', '') == resource.data.get('bailleurEmail', '')
+        && request.resource.data.get('locataireEmail', '') == resource.data.get('locataireEmail', '')
+        && request.resource.data.get('bailleurUid', '') == resource.data.get('bailleurUid', '')
+        && request.resource.data.get('locataireUid', '') == resource.data.get('locataireUid', '');
+    }
+
+    function validDocumentId(id) {
+      return id is string && id.matches('^[A-Za-z0-9_-]{1,150}$');
+    }
+
+    function hasContractPair(contractId, bailleurEmail, locataireEmail) {
+      return signedIn()
+        && validDocumentId(contractId)
+        && exists(/databases/$(database)/documents/contrats/$(contractId))
+        && get(/databases/$(database)/documents/contrats/$(contractId)).data.bailleurEmail == bailleurEmail
+        && get(/databases/$(database)/documents/contrats/$(contractId)).data.locataireEmail == locataireEmail
+        && get(/databases/$(database)/documents/contrats/$(contractId)).data.statut == 'valide'
+        && (
+          (bailleurEmail == myEmail()
+            && get(/databases/$(database)/documents/contrats/$(contractId)).data.bailleurUid == myUid())
+          || (locataireEmail == myEmail()
+            && get(/databases/$(database)/documents/contrats/$(contractId)).data.locataireUid == myUid())
+        );
+    }
+
+    function hasPendingPair(contractId, bailleurEmail, locataireEmail, bailleurUid) {
+      return signedIn()
+        && validDocumentId(contractId)
+        && exists(/databases/$(database)/documents/contratsEnAttente/$(contractId))
+        && get(/databases/$(database)/documents/contratsEnAttente/$(contractId)).data.bailleurEmail == bailleurEmail
+        && get(/databases/$(database)/documents/contratsEnAttente/$(contractId)).data.locataireEmail == locataireEmail
+        && get(/databases/$(database)/documents/contratsEnAttente/$(contractId)).data.bailleurUid == bailleurUid;
+    }
+
+    function hasIncidentPair(incidentId, bailleurEmail, locataireEmail) {
+      return signedIn()
+        && validDocumentId(incidentId)
+        && exists(/databases/$(database)/documents/incidents/$(incidentId))
+        && get(/databases/$(database)/documents/incidents/$(incidentId)).data.bailleurEmail == bailleurEmail
+        && get(/databases/$(database)/documents/incidents/$(incidentId)).data.locataireEmail == locataireEmail;
+    }
+
+    function validSharedFile(data, documentId) {
+      return data.get('fournisseurStockage', '') == 'supabase'
+        && data.get('locataireUid', '') == myUid()
+        && data.get('cheminObjet', '').matches('^users/' + myUid() + '/personnels/' + documentId + '/[A-Za-z0-9._-]{1,120}$');
+    }
+
     match /users/{userId} {
-      allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.email == myEmail()
+        && request.resource.data.role in ['bailleur', 'locataire'];
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role
+        && changedOnly(['nom', 'biens']);
+      allow delete: if false;
     }
 
     match /messages/{messageId} {
       allow read: if canReadPair(resource.data);
       allow create: if signedIn()
         && request.resource.data.auteurEmail == myEmail()
+        && request.resource.data.texte is string
+        && request.resource.data.texte.size() > 0
+        && request.resource.data.texte.size() <= 4000
+        && request.resource.data.contratId is string
+        && hasContractPair(
+          request.resource.data.contratId,
+          request.resource.data.bailleurEmail,
+          request.resource.data.locataireEmail
+        )
         && (request.resource.data.bailleurEmail == myEmail()
           || request.resource.data.locataireEmail == myEmail());
-      // L'auteur peut gérer son message ; le destinataire peut uniquement
-      // modifier l'état de lecture et ses horodatages associés.
-      allow update: if signedIn() && (
-        resource.data.auteurEmail == myEmail() ||
-        (
-          canReadPair(resource.data) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lu', 'luAt', 'luAtClient'])
-        )
-      );
+      allow update: if signedIn()
+        && canReadPair(resource.data)
+        && resource.data.auteurEmail != myEmail()
+        && changedOnly(['lu', 'luAt', 'luAtClient'])
+        && request.resource.data.get('lu', false) == true;
       allow delete: if signedIn() && resource.data.auteurEmail == myEmail();
     }
 
     match /contrats/{documentId} {
       allow read: if canReadPair(resource.data);
-      // Le locataire peut créer uniquement le contrat final correspondant
-      // au contrat en attente qu'il vient de signer.
-      allow create: if signedIn() && (
-        request.resource.data.bailleurEmail == myEmail() ||
-        (
-          request.resource.data.locataireEmail == myEmail() &&
-          request.resource.data.statut == 'valide' &&
-          request.resource.data.contratAttenteId is string &&
-          exists(/databases/$(database)/documents/contratsEnAttente/$(request.resource.data.contratAttenteId)) &&
-          get(/databases/$(database)/documents/contratsEnAttente/$(request.resource.data.contratAttenteId)).data.locataireEmail == myEmail() &&
-          get(/databases/$(database)/documents/contratsEnAttente/$(request.resource.data.contratAttenteId)).data.bailleurEmail == request.resource.data.bailleurEmail
+      allow create: if signedIn()
+        && request.resource.data.locataireEmail == myEmail()
+        && request.resource.data.locataireUid == myUid()
+        && request.resource.data.statut == 'valide'
+        && request.resource.data.contratAttenteId is string
+        && hasPendingPair(
+          request.resource.data.contratAttenteId,
+          request.resource.data.bailleurEmail,
+          myEmail(),
+          request.resource.data.bailleurUid
         )
-      );
-      allow update: if canReadPair(resource.data);
+        && request.resource.data.signatureLocataire is string
+        && request.resource.data.signatureBailleur is string;
+      // Un contrat final est immuable depuis le navigateur.
+      allow update: if false;
       allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
     }
 
     match /contratsEnAttente/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create: if signedIn() && request.resource.data.bailleurEmail == myEmail();
-      allow update: if canReadPair(resource.data);
-      allow delete: if canReadPair(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.bailleurEmail == myEmail()
+        && request.resource.data.bailleurUid == myUid()
+        && request.resource.data.locataireEmail is string
+        && request.resource.data.locataireEmail.size() > 3
+        && request.resource.data.statut == 'en_attente_locataire';
+      allow update: if false;
+      // Le bailleur peut retirer l'offre ; le destinataire peut la refuser/supprimer.
+      allow delete: if signedIn()
+        && (resource.data.bailleurEmail == myEmail() || resource.data.locataireEmail == myEmail());
     }
 
     match /paiements/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create, update: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      allow create: if signedIn()
+        && request.resource.data.locataireEmail is string
+        && request.resource.data.bailleurEmail is string
+        && hasContractPair(
+          request.resource.data.contratId,
+          request.resource.data.bailleurEmail,
+          request.resource.data.locataireEmail
+        )
+        && (
+          request.resource.data.bailleurEmail == myEmail()
+          || (request.resource.data.locataireEmail == myEmail()
+            && request.resource.data.statut == 'En attente'
+            && request.resource.data.origine == 'mobile_money_locataire')
+        );
+      allow update: if signedIn()
+        && resource.data.bailleurEmail == myEmail()
+        && participantsUnchanged()
+        && changedOnly(['statut', 'modifieLe']);
       allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
     }
 
     match /quittances/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create, update: if signedIn() && request.resource.data.bailleurEmail == myEmail();
+      allow create: if signedIn()
+        && request.resource.data.bailleurEmail == myEmail()
+        && hasContractPair(
+          request.resource.data.contratId,
+          request.resource.data.bailleurEmail,
+          request.resource.data.locataireEmail
+        );
+      allow update: if false;
       allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
     }
 
     match /incidents/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create: if signedIn() && (
-        request.resource.data.locataireEmail == myEmail() ||
-        request.resource.data.bailleurEmail == myEmail()
-      );
-      allow update, delete: if canReadPair(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.locataireEmail == myEmail()
+        && request.resource.data.locataireUid == myUid()
+        && hasContractPair(
+          request.resource.data.contratId,
+          request.resource.data.bailleurEmail,
+          request.resource.data.locataireEmail
+        );
+      allow update: if signedIn()
+        && participantsUnchanged()
+        && (
+          (resource.data.bailleurEmail == myEmail()
+            && changedOnly(['statut', 'archive', 'dateArchivage', 'dateMAJ', 'commentaireBailleur', 'modifieLe']))
+          || (resource.data.locataireEmail == myEmail()
+            && changedOnly(['archive', 'dateArchivageLocataire', 'modifieLe']))
+        );
+      allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
     }
 
     match /documentsLocataire/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create, update: if signedIn() && (
-        request.resource.data.locataireEmail == myEmail() ||
-        request.resource.data.bailleurEmail == myEmail()
+      allow create: if signedIn() && (
+        (request.resource.data.type == 'signature_locataire'
+          && request.resource.data.locataireEmail == myEmail()
+          && request.resource.data.get('bailleurEmail', '') == '')
+        || (request.resource.data.type == 'quittance'
+          && request.resource.data.bailleurEmail == myEmail()
+          && hasContractPair(
+            request.resource.data.contratId,
+            request.resource.data.bailleurEmail,
+            request.resource.data.locataireEmail
+          ))
+        || (request.resource.data.type == 'statut_incident'
+          && request.resource.data.bailleurEmail == myEmail()
+          && hasIncidentPair(
+            request.resource.data.incidentId,
+            request.resource.data.bailleurEmail,
+            request.resource.data.locataireEmail
+          ))
       );
-      allow delete: if canReadPair(resource.data);
+      allow update, delete: if false;
     }
 
     match /documentsRecusBailleur/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create: if signedIn() && request.resource.data.locataireEmail == myEmail();
-      allow update, delete: if signedIn() && resource.data.bailleurEmail == myEmail();
+      allow create: if signedIn()
+        && request.resource.data.locataireEmail == myEmail()
+        && request.resource.data.locataireUid == myUid()
+        && hasContractPair(
+          request.resource.data.contratId,
+          request.resource.data.bailleurEmail,
+          request.resource.data.locataireEmail
+        )
+        && (request.resource.data.get('fournisseurStockage', '') != 'supabase'
+          || validSharedFile(request.resource.data, documentId));
+      allow update: if signedIn()
+        && resource.data.bailleurEmail == myEmail()
+        && participantsUnchanged()
+        && request.resource.data.get('cheminObjet', '') == resource.data.get('cheminObjet', '')
+        && request.resource.data.get('locataireUid', '') == resource.data.get('locataireUid', '')
+        && changedOnly(['statut']);
+      allow delete: if false;
     }
 
     match /documentsPersonnels/{documentId} {
-      // Nouveau format : chaque document appartient à l'e-mail authentifié.
-      // Les deux anciens champs restent lisibles temporairement pour ne pas
-      // perdre les documents créés par une version précédente de MGI.
       function isPersonalDocumentOwner(data) {
-        return data.proprietaireEmail == myEmail()
-          || data.email == myEmail()
-          || data.userEmail == myEmail();
+        return signedIn() && (
+          data.get('proprietaireEmail', '') == myEmail()
+          || data.get('email', '') == myEmail()
+          || data.get('userEmail', '') == myEmail()
+        );
       }
-      allow read, delete: if signedIn() && isPersonalDocumentOwner(resource.data);
+      function hasOwnStoragePath(data) {
+        return data.get('proprietaireUid', '') == myUid()
+          && data.get('cheminObjet', '').matches('^users/' + myUid() + '/personnels/' + documentId + '/[A-Za-z0-9._-]{1,120}$');
+      }
+      allow read, delete: if isPersonalDocumentOwner(resource.data);
       allow create: if signedIn()
-        && request.resource.data.proprietaireEmail == myEmail();
-      allow update: if signedIn()
-        && isPersonalDocumentOwner(resource.data)
-        && request.resource.data.proprietaireEmail == myEmail();
+        && request.resource.data.proprietaireUid == myUid()
+        && request.resource.data.proprietaireEmail == myEmail()
+        && hasOwnStoragePath(request.resource.data);
+      allow update: if isPersonalDocumentOwner(resource.data)
+        && request.resource.data.proprietaireUid == myUid()
+        && request.resource.data.proprietaireEmail == myEmail()
+        && request.resource.data.get('cheminObjet', '') == resource.data.get('cheminObjet', '')
+        && changedOnly(['nom', 'statut', 'date', 'dateISO', 'modifieLe']);
     }
 
     match /signaturesLocataire/{documentId} {
       allow read: if canReadPair(resource.data);
-      allow create, update: if signedIn() && (
-        request.resource.data.locataireEmail == myEmail() ||
-        request.resource.data.bailleurEmail == myEmail()
-      );
-      allow delete: if canReadPair(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'locataireNom', 'locataireEmail', 'signatureImage', 'dateSig', 'timestamp',
+          'creeLe', 'bailleurEmail', 'contratId'
+        ])
+        && request.resource.data.locataireEmail == myEmail()
+        && (request.resource.data.get('bailleurEmail', '') == ''
+          || hasContractPair(
+            request.resource.data.contratId,
+            request.resource.data.bailleurEmail,
+            request.resource.data.locataireEmail
+          ));
+      allow update, delete: if false;
     }
 
     match /immeubles/{documentId} {
-      allow read, delete: if signedIn() && resource.data.bailleurEmail == myEmail();
-      allow create: if signedIn() && request.resource.data.bailleurEmail == myEmail();
-      allow update: if signedIn() && resource.data.bailleurEmail == myEmail()
-        && request.resource.data.bailleurEmail == myEmail();
+      allow read: if signedIn()
+        && resource.data.bailleurEmail == myEmail();
+      allow create: if signedIn()
+        && request.resource.data.bailleurEmail == myEmail()
+        && request.resource.data.bailleurUid == myUid();
+      allow update: if signedIn()
+        && resource.data.bailleurEmail == myEmail()
+        && request.resource.data.bailleurEmail == myEmail()
+        && request.resource.data.get('bailleurUid', '') == resource.data.get('bailleurUid', '')
+        && changedOnly(['nom', 'adresse', 'type', 'nbLogements', 'logements', 'dateCreation']);
+      allow delete: if signedIn() && resource.data.bailleurEmail == myEmail();
     }
 
     // Toute collection non déclarée ci-dessus est refusée par défaut.
