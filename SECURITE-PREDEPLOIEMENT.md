@@ -1,6 +1,6 @@
 # Sécurité — prérequis avant déploiement public
 
-Ce document accompagne une **proposition locale de durcissement**. Les fichiers ne sont pas encore poussés sur GitHub et aucune règle, donnée Firebase, fonction Supabase ou version publique n’a été déployée/modifiée.
+Ce document décrit le lot de sécurité préparé dans le dépôt. La présence des fichiers dans GitHub ou dans `main` ne déploie pas automatiquement les règles Firestore ni la fonction Supabase ; leur mise en service nécessite des opérations séparées. La publication du site statique dépend de la branche configurée dans GitHub Pages.
 
 ## Changements préparés
 
